@@ -184,6 +184,7 @@
   .pct button:hover { background: var(--surface-2); }
   .order-info { font-size: 13px; color: var(--muted); display: grid; gap: 4px; margin-bottom: 14px; }
   .order-info div { display: flex; justify-content: space-between; gap: 8px; }
+  .order-info span:first-child { white-space: nowrap; }
   .order-info span:last-child { color: var(--text); text-align: right; }
   .submit { width: 100%; padding: 12px; border: 0; border-radius: 10px; color: #fff; font-weight: 700; cursor: pointer; }
   .submit.buy { background: var(--up); }
@@ -197,6 +198,16 @@
   .tabs button { border: 0; background: transparent; padding: 10px 12px; cursor: pointer; color: var(--muted); font-weight: 600; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
   .tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
   .sub-title { font-size: 13px; font-weight: 600; margin: 4px 0 6px; }
+  .order-cards { display: grid; gap: 8px; margin-bottom: 16px; }
+  .order-card { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; display: grid; gap: 6px; }
+  .order-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .steps { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 13px; }
+  .step { color: var(--muted); }
+  .step::before { content: "○ "; }
+  .step.done { color: var(--accent); font-weight: 600; }
+  .step.done::before { content: "● "; }
+  .step + .step::before { content: "→ ○ "; color: var(--muted); }
+  .step.done + .step::before { content: "→ ○ "; }
   .sub-title + .table-scroll { margin-bottom: 16px; }
   .empty { padding: 28px 8px; text-align: center; color: var(--muted); font-size: 14px; }
   .tag { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--surface-2); color: var(--muted); margin-left: 6px; vertical-align: 1px; }
@@ -322,12 +333,12 @@
       <div id="stockPane" class="stock-pane hidden">
         <div class="stock-tools">
           <input class="input" id="stockSearch" placeholder="종목명 또는 종목코드 검색 (예: 삼성전자, 005930)" autocomplete="off">
-          <div class="stock-note" id="stockNote">국내주식은 공공데이터 일별 시세로 체결돼요. <b>종가·시가·지정가</b> 주문을 고를 수 있고, 체결 결과는 다음 영업일 오후에 반영돼요.</div>
+          <div class="stock-note" id="stockNote">국내주식은 실시간이 아니라 <b>하루 한 번 확정되는 가격</b>으로 사고팔아요. 주문 결과는 <b>다음 영업일 오후</b>에 나와요.</div>
         </div>
         <div class="table-scroll stock-scroll">
           <table>
             <thead>
-              <tr><th>종목</th><th>종가</th><th>등락률</th><th class="hide-sm">거래대금</th></tr>
+              <tr><th>종목</th><th>마감 가격</th><th>등락률</th><th class="hide-sm">거래대금</th></tr>
             </thead>
             <tbody id="stockBody"></tbody>
           </table>
@@ -346,13 +357,13 @@
         <button id="tabSell">매도</button>
       </div>
       <div class="type-seg hidden" id="typeSeg">
-        <button data-type="close" class="active">종가</button>
-        <button data-type="open">시가</button>
-        <button data-type="limit">지정가</button>
+        <button data-type="close" class="active">마감 가격</button>
+        <button data-type="open">시작 가격</button>
+        <button data-type="limit">원하는 가격</button>
       </div>
       <div class="type-help hidden" id="typeHelp"></div>
       <div class="field hidden" id="limitField">
-        <label for="limitPrice">지정가 (원)</label>
+        <label for="limitPrice">원하는 가격 (원)</label>
         <input class="input num" id="limitPrice" inputmode="numeric" placeholder="0">
       </div>
       <div class="field">
@@ -369,7 +380,8 @@
         <div><span id="availLabel">주문 가능</span><span class="num" id="avail">-</span></div>
         <div><span id="estLabel">예상 수량</span><span class="num" id="est">-</span></div>
         <div><span id="feeLabel">수수료</span><span class="num" id="fee">-</span></div>
-        <div id="schedRow" class="hidden"><span>체결 예정</span><span id="sched">-</span></div>
+        <div id="schedRow" class="hidden"><span>가격 기준</span><span id="sched">-</span></div>
+        <div id="resultRow" class="hidden"><span>결과 확인</span><span id="resultDate">-</span></div>
       </div>
       <button class="submit buy" id="submitBtn">매수</button>
       <div class="msg" id="orderMsg"></div>
@@ -416,7 +428,7 @@
   const OPEN_CUTOFF_MIN = 9 * 60;
   const CLOSE_CUTOFF_MIN = 15 * 60 + 30;
   const LIMIT_DAYS = 5;
-  const ORDER_TYPE_LABEL = { close: "종가", open: "시가", limit: "지정가", market: "시장가" };
+  const ORDER_TYPE_LABEL = { close: "마감 가격", open: "시작 가격", limit: "원하는 가격", market: "시장가" };
 
   const COINS = [
     { market: "KRW-BTC", name: "비트코인" }, { market: "KRW-ETH", name: "이더리움" },
@@ -521,6 +533,14 @@
     while ([0, 6].includes(toDate(d).getUTCDay())) d = addDays(d, 1);
     return d;
   }
+  // KRX market holidays on weekdays, used only to show friendlier dates. Extend each year.
+  const KRX_HOLIDAYS = new Set(["20261009", "20261225", "20261231", "20270101"]);
+  const isTradingDay = ymd => ![0, 6].includes(toDate(ymd).getUTCDay()) && !KRX_HOLIDAYS.has(ymd);
+  function tradingDayOnOrAfter(ymd) { while (!isTradingDay(ymd)) ymd = addDays(ymd, 1); return ymd; }
+  const nextTradingDay = ymd => tradingDayOnOrAfter(addDays(ymd, 1));
+  // When results show up: prices are published the next business day, afternoon.
+  const resultDay = priceDay => nextTradingDay(priceDay);
+
   // Mirrors order_eligible_date() in the database, for showing when an order will fill.
   function orderEligibleDate(type) {
     const { date, minutes } = kstNow();
@@ -773,13 +793,24 @@
 
   const parseNum = id => { const v = parseFloat($(id).value.replace(/,/g, "")); return isFinite(v) ? v : 0; };
   function typeHelpText(type) {
-    if (type === "open") return "09:00 전 주문은 그날 시가, 이후 주문은 다음 거래일 시가로 체결돼요.";
-    if (type === "limit") return `정한 가격 이하(매수)·이상(매도)에 거래되면 그 가격으로 체결돼요. 다음 거래일부터 ${LIMIT_DAYS}거래일 동안 유효해요.`;
-    return "15:30 전 주문은 그날 종가, 이후 주문은 다음 거래일 종가로 체결돼요.";
+    const act = side === "buy" ? "사요" : "팔아요";
+    if (type === "open") return `장이 열릴 때 가격(아침 9시)으로 ${act}.`;
+    if (type === "limit") return side === "buy"
+      ? `정한 가격까지 내려오면 그 가격에 사요. 최대 ${LIMIT_DAYS}거래일 동안 기다리고, 안 내려오면 자동 취소돼요.`
+      : `정한 가격까지 올라오면 그 가격에 팔아요. 최대 ${LIMIT_DAYS}거래일 동안 기다리고, 안 올라오면 자동 취소돼요.`;
+    return `장이 끝날 때 가격(오후 3시 30분)으로 ${act}.`;
   }
-  function schedText(type) {
-    const d = fmtYmdLong(orderEligibleDate(type));
-    return type === "limit" ? `${d}부터 ${LIMIT_DAYS}거래일` : `${d} 이후 첫 ${ORDER_TYPE_LABEL[type]}`;
+  // First trading day whose price an order uses, and when its result shows up.
+  function orderPriceDay(eligible) { return tradingDayOnOrAfter(eligible); }
+  function schedText(type, eligible = orderEligibleDate(type)) {
+    const d = orderPriceDay(eligible);
+    const today = kstNow().date;
+    const when = d === today ? `오늘 ${fmtYmdLong(d)}` : fmtYmdLong(d);
+    return type === "limit" ? `${when}부터 ${LIMIT_DAYS}거래일` : `${when} ${ORDER_TYPE_LABEL[type]}`;
+  }
+  function resultText(type, eligible = orderEligibleDate(type)) {
+    const r = resultDay(orderPriceDay(eligible));
+    return type === "limit" ? `가격이 닿은 다음 날 오후 (빠르면 ${fmtYmdLong(r)})` : `${fmtYmdLong(r)} 오후`;
   }
 
   function renderOrder() {
@@ -789,7 +820,7 @@
     $("oName").textContent = assetName(selected, held?.name);
     $("oSym").textContent = sym(selected);
     $("oPrice").innerHTML = p ? `<span class="${cls(p.change)}">${fmtPrice(p.price)}</span>` : "-";
-    $("oPriceNote").textContent = stockMode && stock.latest ? `${fmtYmd(stock.latest)} 종가` : "";
+    $("oPriceNote").textContent = stockMode && stock.latest ? `${fmtYmd(stock.latest)} 마감 가격` : "";
     $("tabBuy").className = side === "buy" ? "active-buy" : "";
     $("tabSell").className = side === "sell" ? "active-sell" : "";
     const btn = $("submitBtn");
@@ -798,6 +829,7 @@
     btn.disabled = busy || (stockMode && !p);
 
     $("schedRow").classList.toggle("hidden", !stockMode);
+    $("resultRow").classList.toggle("hidden", !stockMode);
     $("typeSeg").classList.toggle("hidden", !stockMode);
     $("typeHelp").classList.toggle("hidden", !stockMode);
     $("limitField").classList.toggle("hidden", !stockMode || orderType !== "limit");
@@ -831,6 +863,7 @@
     const avail = (held?.qty || 0) - pendingSellQty(selected);
     const limit = parseNum("limitPrice");
     $("sched").textContent = schedText(orderType);
+    $("resultDate").textContent = resultText(orderType);
     if (orderType === "limit") {
       const qty = Math.floor(amt);
       $("amountLabel").textContent = "수량 (주)";
@@ -870,19 +903,21 @@
   function renderHoldings() {
     let html = "";
     if (me.orders.length) {
-      html += `<div class="sub-title">체결 대기 주문</div><div class="table-scroll"><table>
-        <thead><tr><th>종목</th><th>구분</th><th>주문</th><th class="hide-sm">접수 시각</th><th>체결 기준</th><th></th></tr></thead>
-        <tbody>${me.orders.map(o => {
+      html += `<div class="sub-title">진행 중인 주문</div><div class="order-cards">${me.orders.map(o => {
           const elig = isoToYmd(o.eligible);
-          return `<tr>
-          <td><div class="coin-name">${esc(o.name)}</div><div class="coin-sym">${sym(o.market)}</div></td>
-          <td class="${o.side === "buy" ? "side-buy" : "side-sell"}">${o.side === "buy" ? "매수" : "매도"}<span class="tag">${ORDER_TYPE_LABEL[o.type]}</span></td>
-          <td class="num">${o.type === "limit" ? `${fmtKRW(o.limit_price)} × ${o.qty.toLocaleString("ko-KR")}주` : o.side === "buy" ? fmtKRW(o.amount) : o.qty.toLocaleString("ko-KR") + "주"}</td>
-          <td class="num muted hide-sm">${fmtTime(o.placed_at)}</td>
-          <td class="num">${fmtYmdLong(elig)}${o.type === "limit" ? ` 부터 ${LIMIT_DAYS}거래일` : "~"}</td>
-          <td><button class="btn btn-sm" data-cancel="${o.id}">취소</button></td>
-        </tr>`;
-        }).join("")}</tbody></table></div>`;
+          const what = o.type === "limit"
+            ? `${fmtKRW(o.limit_price)}에 ${o.qty.toLocaleString("ko-KR")}주`
+            : o.side === "buy" ? `${fmtKRW(o.amount)}어치` : `${o.qty.toLocaleString("ko-KR")}주`;
+          return `<div class="order-card">
+            <div class="order-card-head">
+              <div><span class="coin-name">${esc(o.name)}</span> <span class="coin-sym">${sym(o.market)}</span></div>
+              <button class="btn btn-sm" data-cancel="${o.id}">취소</button>
+            </div>
+            <div><span class="${o.side === "buy" ? "side-buy" : "side-sell"}">${o.side === "buy" ? "사기" : "팔기"}</span>
+              <span class="num">${what}</span> <span class="tag">${ORDER_TYPE_LABEL[o.type]}</span></div>
+            <div class="steps"><span class="step done">접수</span><span class="step">${schedText(o.type, elig)}</span><span class="step">결과 ${resultText(o.type, elig)}</span></div>
+          </div>`;
+        }).join("")}</div>`;
     }
     if (!me.holdings.length) {
       html += `<div class="empty">아직 보유한 자산이 없어요. 위 시세표에서 코인이나 국내주식을 골라 매수해 보세요.</div>`;
@@ -906,7 +941,7 @@
 
   function tradeTag(t) {
     if (t.order_type === "market") return "";
-    return `<span class="tag">${t.bas_dt ? fmtYmd(isoToYmd(t.bas_dt)) + " " : ""}${ORDER_TYPE_LABEL[t.order_type] || ""}</span>`;
+    return `<span class="tag">${t.bas_dt ? fmtYmd(isoToYmd(t.bas_dt)) + " " : ""}${ORDER_TYPE_LABEL[t.order_type] || ""}</span>`; // e.g. "10/2 마감 가격"
   }
 
   function renderTrades() {
@@ -1093,9 +1128,12 @@
     const d = result.data;
     if (isStock(selected)) {
       const what = d.type === "limit"
-        ? `${fmtKRW(d.limit_price)}에 ${Number(d.qty).toLocaleString("ko-KR")}주 ${side === "buy" ? "매수" : "매도"}`
-        : side === "buy" ? fmtKRW(d.amount) + " 매수" : Number(d.qty).toLocaleString("ko-KR") + "주 매도";
-      setMsg(`${d.name} ${what} 예약 완료. 체결 기준: ${schedText(d.type)}.`, true);
+        ? `${fmtKRW(d.limit_price)}에 ${Number(d.qty).toLocaleString("ko-KR")}주 ${side === "buy" ? "사기" : "팔기"}`
+        : side === "buy" ? fmtKRW(d.amount) + "어치 사기" : Number(d.qty).toLocaleString("ko-KR") + "주 팔기";
+      const elig = isoToYmd(d.eligible);
+      setMsg(d.type === "limit"
+        ? `${d.name} ${what} 예약됐어요. ${schedText(d.type, elig)} 동안 기다리고, 결과는 ${resultText(d.type, elig)}에 확인할 수 있어요.`
+        : `${d.name} ${what} 예약됐어요. ${schedText(d.type, elig)}으로 거래되고, 결과는 ${resultText(d.type, elig)}에 확인할 수 있어요.`, true);
     } else {
       setMsg(`${sym(selected)} ${fmtQty(Number(d.qty))}개 ${side === "buy" ? "매수" : "매도"} 체결 (${fmtPrice(Number(d.price))}원)`, true);
     }
