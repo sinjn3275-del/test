@@ -9,8 +9,13 @@
 import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-const API_BASE = process.env.STOCK_API_BASE
-  || "https://apis.data.go.kr/1160100/service/GetStockSecuritiesInfoService/getStockPriceInfo";
+// Keys issued now are only registered for the V2 address; older keys work on V1.
+// The first address that accepts the key is used for the rest of the run.
+const API_BASES = process.env.STOCK_API_BASE ? [process.env.STOCK_API_BASE] : [
+  "https://apis.data.go.kr/1160100/GetStockSecuritiesInfoService_V2/getStockPriceInfo_V2",
+  "https://apis.data.go.kr/1160100/service/GetStockSecuritiesInfoService/getStockPriceInfo",
+];
+let apiBase = API_BASES.length === 1 ? API_BASES[0] : null;
 const KEY = process.env.DATA_GO_KR_KEY;
 const OUT_DIR = path.resolve(process.env.STOCK_OUT_DIR || "data/stocks");
 const KEEP_DAYS = 30;          // trading days kept for settling pending orders
@@ -25,15 +30,37 @@ if (!KEY) {
 const ymd = d => d.toISOString().slice(0, 10).replace(/-/g, "");
 const kstToday = () => new Date(Date.now() + 9 * 3600_000);
 
+const keyNotRegistered = text => /SERVICE_KEY_IS_NOT_REGISTERED|"returnReasonCode"\s*:\s*"30"|<returnReasonCode>30</.test(text);
+
+async function request(params) {
+  if (apiBase) {
+    const res = await fetch(`${apiBase}?${params}`);
+    return { res, text: await res.text() };
+  }
+  let last;
+  for (const base of API_BASES) {
+    const res = await fetch(`${base}?${params}`);
+    const text = await res.text();
+    last = { res, text };
+    if (keyNotRegistered(text)) {
+      console.log(`key not registered for ${base}; trying the next address`);
+      continue;
+    }
+    apiBase = base;
+    console.log(`using ${base}`);
+    break;
+  }
+  return last;
+}
+
 async function fetchDay(basDt) {
   const rows = [];
   for (let pageNo = 1; ; pageNo++) {
     const params = new URLSearchParams({
       serviceKey: KEY, resultType: "json", numOfRows: "1000", pageNo: String(pageNo), basDt,
     });
-    const res = await fetch(`${API_BASE}?${params}`);
-    const text = await res.text();
-    if (!res.ok) throw new Error(`HTTP ${res.status} for ${basDt}: ${text.slice(0, 200)}`);
+    const { res, text } = await request(params);
+    if (!res.ok) throw new Error(`HTTP ${res.status} for ${basDt}: ${text.slice(0, 300)}`);
     let json;
     try { json = JSON.parse(text); } catch {
       // Key errors come back as XML even when JSON is requested.
