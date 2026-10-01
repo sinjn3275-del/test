@@ -82,7 +82,7 @@
   header .wrap { display: flex; align-items: center; justify-content: space-between; height: 56px; gap: 12px; }
   .logo { font-weight: 800; font-size: 20px; letter-spacing: -0.5px; }
   .logo small { font-weight: 500; font-size: 12px; color: var(--muted); margin-left: 6px; letter-spacing: 0; }
-  .logo { white-space: nowrap; }
+  .logo { white-space: nowrap; color: inherit; text-decoration: none; cursor: pointer; }
   .user-chip { display: flex; align-items: center; gap: 8px; font-size: 14px; white-space: nowrap; min-width: 0; }
   .user-chip #userName { overflow: hidden; text-overflow: ellipsis; }
   .user-chip .btn { white-space: nowrap; flex-shrink: 0; }
@@ -225,7 +225,7 @@
 
 <header>
   <div class="wrap">
-    <div class="logo">입고수<small>말 말고 수익률로</small></div>
+    <a class="logo" href="./" id="homeLink" title="처음 화면으로">입고수<small>말 말고 수익률로</small></a>
     <div class="user-chip hidden" id="userChip">
       <span id="userName"></span>
       <button class="btn" id="logoutBtn">로그아웃</button>
@@ -267,10 +267,6 @@
 
 <!-- App -->
 <div class="wrap hidden" id="appView">
-  <div class="banner hidden" id="coinBanner">
-    브라우저에서 업비트 코인 시세를 불러오지 못했어요. 코인 주문은 서버가 실제 시세로 체결하니 그대로 이용할 수 있어요.
-  </div>
-
   <section class="summary">
     <div class="card stat">
       <div class="label">총 자산</div>
@@ -486,7 +482,9 @@
 
   // ---------- Coin prices (display only; the server fetches its own price for fills) ----------
   const prices = {};
-  let coinLive = null;
+  let coinLive = null;   // null: not loaded yet, true: last fetch ok, false: repeated failures
+  let coinFailures = 0;
+  const COIN_FAILS_BEFORE_WARNING = 3;
 
   async function refreshCoinPrices() {
     const url = "https://api.upbit.com/v1/ticker?markets=" + COINS.map(c => c.market).join(",");
@@ -499,8 +497,10 @@
         prices[t.market] = { price: t.trade_price, change: t.signed_change_rate, volume: t.acc_trade_price_24h };
       }
       coinLive = true;
+      coinFailures = 0;
     } catch (e) {
-      coinLive = false;
+      // A single failed poll keeps the last prices; only repeated failures change the status.
+      if (++coinFailures >= COIN_FAILS_BEFORE_WARNING) coinLive = false;
     } finally {
       clearTimeout(timer);
     }
@@ -720,18 +720,20 @@
 
   function renderSourceLabel() {
     $("srcLabel").textContent = assetTab === "coin"
-      ? (coinLive ? "업비트 실시간" : coinLive === false ? "시세 연결 안 됨" : "연결 중…")
+      ? (coinLive ? "업비트 실시간"
+        : coinLive === false ? (COINS.some(c => prices[c.market]) ? "업비트 재연결 중" : "시세 연결 안 됨")
+        : "연결 중…")
       : (stock.ready ? `${fmtYmd(stock.latest)} 기준` : "데이터 준비 중");
   }
 
   function renderMarkets() {
     renderSourceLabel();
-    $("coinBanner").classList.toggle("hidden", coinLive !== false);
     $("marketBody").innerHTML = COINS.map(c => {
       const p = prices[c.market];
       const cells = p
         ? `<td class="num ${cls(p.change)}">${fmtPrice(p.price)}</td><td class="num ${cls(p.change)}">${fmtPct(p.change)}</td><td class="num muted hide-sm">${fmtBig(p.volume)}</td>`
         : `<td class="num muted">-</td><td class="num muted">-</td><td class="num muted hide-sm">-</td>`;
+      // No browser price: orders still fill at the server's Upbit price.
       return `<tr class="market-row ${c.market === selected ? "selected" : ""}" data-m="${c.market}">
         <td><div class="coin-name">${c.name}</div><div class="coin-sym">${sym(c.market)}</div></td>${cells}</tr>`;
     }).join("");
@@ -977,6 +979,24 @@
   $("authTabs").addEventListener("click", e => { const m = e.target.dataset?.mode; if (m) setAuthMode(m); });
   $("authForm").addEventListener("submit", submitAuth);
   $("logoutBtn").addEventListener("click", () => sb?.auth.signOut());
+
+  // Logo: back to the default view (coin list, BTC buy, holdings tab) at the top of the page.
+  $("homeLink").addEventListener("click", e => {
+    e.preventDefault();
+    if (me.id) {
+      assetTab = "coin";
+      activeTab = "holdings";
+      side = "buy";
+      orderType = "close";
+      selected = COINS[0].market;
+      $("amount").value = "";
+      $("limitPrice").value = "";
+      $("stockSearch").value = "";
+      setMsg("");
+      renderAll();
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
 
   function selectMarket(m) {
     if (!COIN_BY_MARKET[m] && !isStock(m)) return;
