@@ -12,18 +12,22 @@
 body{margin:0;background:#F6F7F2}
 a{color:#123C4D}a:hover{color:#0A2733}
 .g9-wrap{max-width:1200px;margin:0 auto;padding:0 24px;box-sizing:border-box}
+@media (min-width:1001px){.g9-menu-btn{display:none !important}}
+@media (max-width:1000px){.g9-nav{display:none !important}.g9-util{display:none !important}.g9-ladder{flex-wrap:wrap !important}.g9-ladder > div{flex:1 1 30% !important}}
+@media (max-width:860px){
+.g9-hero{flex-direction:column !important;align-items:stretch !important;gap:32px !important;padding-top:40px !important;padding-bottom:56px !important}
+.g9-hero > div{flex:none !important;width:100% !important}
+}
 @media (max-width:720px){
-.g9-nav{display:none !important}
-.g9-hero{flex-direction:column !important;padding-top:40px !important}
+.g9-hero{padding-top:40px !important}
 .g9-hero-title{font-size:38px !important}
 .g9-sec-title{font-size:28px !important}
 .g9-ladder{flex-direction:column !important}
 .g9-tablewrap{overflow-x:auto}
 }
 
-.g9-nav.g9-open{display:flex !important;position:absolute;top:110px;left:0;right:0;flex-direction:column;gap:0 !important;background:#FFFFFF;border-bottom:1px solid #E2E5DC;padding:8px 20px;z-index:50}
+.g9-nav.g9-open{display:flex !important;position:absolute;top:100%;left:0;right:0;flex-direction:column;gap:0 !important;background:#FFFFFF;border-bottom:1px solid #E2E5DC;padding:8px 20px;z-index:50}
 .g9-nav.g9-open a{padding:14px 0;border-bottom:1px solid #EEF1E8}
-@media (max-width:720px){.g9-util{display:none}}
 header{position:relative}
 </style>
 </head>
@@ -69,7 +73,7 @@ header{position:relative}
 <a href="/member/login.html" class="g9-util" style="text-decoration: none; font-size: 14px; font-weight: 500">로그인</a>
 <a href="/order/basket.html" class="g9-util" style="text-decoration: none; font-size: 14px; font-weight: 500">장바구니</a>
 <a href="/myshop/index.html" style="text-decoration: none; font-size: 13px; font-weight: 600; padding: 8px 12px; border-radius: 999px; background: #EEF1E8; color: #123C4D">내 등급 보기</a>
-<button type="button" id="g9MenuBtn" aria-label="메뉴 열기" aria-expanded="false" style="width: 44px; height: 44px; border: 1px solid #E2E5DC; border-radius: 10px; background: #FFFFFF; display: flex; align-items: center; justify-content: center; cursor: pointer">
+<button type="button" id="g9MenuBtn" class="g9-menu-btn" aria-label="메뉴 열기" aria-expanded="false" style="width: 44px; height: 44px; border: 1px solid #E2E5DC; border-radius: 10px; background: #FFFFFF; display: flex; align-items: center; justify-content: center; cursor: pointer">
 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#123C4D" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg>
 </button>
 </div>
