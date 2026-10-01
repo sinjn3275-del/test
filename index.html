@@ -87,6 +87,7 @@
     padding: 6px 12px; cursor: pointer;
   }
   .btn:hover { background: var(--surface-2); }
+  .btn-sm { padding: 3px 10px; font-size: 13px; }
   .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
   .btn-primary:hover { background: var(--accent); filter: brightness(1.08); }
 
@@ -94,6 +95,7 @@
     margin: 12px 0 0; padding: 10px 14px; border-radius: 10px;
     background: var(--warn-bg); color: var(--warn-text); font-size: 13px;
   }
+  .banner .btn { margin-top: 8px; color: var(--text); }
 
   /* Login */
   .login {
@@ -134,8 +136,14 @@
 
   /* Main grid */
   .main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
-  .section-title { margin: 0 0 12px; font-size: 15px; display: flex; justify-content: space-between; align-items: center; }
-  .src { font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: 999px; background: var(--accent-weak); color: var(--accent); }
+  .market-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .asset-tabs { display: flex; gap: 4px; background: var(--surface-2); padding: 4px; border-radius: 10px; }
+  .asset-tabs button { border: 0; background: transparent; padding: 6px 14px; border-radius: 7px; cursor: pointer; font-weight: 600; color: var(--muted); }
+  .asset-tabs button.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .src { font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: 999px; background: var(--accent-weak); color: var(--accent); white-space: nowrap; }
+  .stock-tools { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+  .stock-note { font-size: 12px; color: var(--muted); }
+  .stock-pane .banner { margin: 0 0 8px; }
 
   table { width: 100%; border-collapse: collapse; }
   th, td { padding: 10px 8px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
@@ -148,11 +156,13 @@
   .coin-name { font-weight: 600; }
   .coin-sym { font-size: 12px; color: var(--muted); }
   .table-scroll { overflow-x: auto; }
+  .stock-scroll { max-height: 560px; overflow-y: auto; }
 
   /* Order panel */
   .order { position: sticky; top: 72px; }
-  .order .coin-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
-  .order .coin-head .price { font-size: 20px; font-weight: 700; }
+  .order .coin-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+  .order .coin-head .price { font-size: 20px; font-weight: 700; white-space: nowrap; }
+  .order .price-note { font-size: 12px; color: var(--muted); text-align: right; margin-bottom: 10px; min-height: 18px; }
   .seg { display: grid; grid-template-columns: 1fr 1fr; background: var(--surface-2); border-radius: 10px; padding: 4px; margin-bottom: 14px; }
   .seg button { border: 0; background: transparent; padding: 8px; border-radius: 8px; cursor: pointer; font-weight: 600; color: var(--muted); }
   .seg button.active-buy { background: var(--up); color: #fff; }
@@ -161,8 +171,8 @@
   .pct button { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 6px 0; cursor: pointer; font-size: 13px; }
   .pct button:hover { background: var(--surface-2); }
   .order-info { font-size: 13px; color: var(--muted); display: grid; gap: 4px; margin-bottom: 14px; }
-  .order-info div { display: flex; justify-content: space-between; }
-  .order-info span:last-child { color: var(--text); }
+  .order-info div { display: flex; justify-content: space-between; gap: 8px; }
+  .order-info span:last-child { color: var(--text); text-align: right; }
   .submit { width: 100%; padding: 12px; border: 0; border-radius: 10px; color: #fff; font-weight: 700; cursor: pointer; }
   .submit.buy { background: var(--up); }
   .submit.sell { background: var(--down); }
@@ -174,6 +184,8 @@
   .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin: -4px -4px 12px; padding: 0 4px; overflow-x: auto; }
   .tabs button { border: 0; background: transparent; padding: 10px 12px; cursor: pointer; color: var(--muted); font-weight: 600; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
   .tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+  .sub-title { font-size: 13px; font-weight: 600; margin: 4px 0 6px; }
+  .sub-title + .table-scroll { margin-bottom: 16px; }
   .empty { padding: 28px 8px; text-align: center; color: var(--muted); font-size: 14px; }
   .tag { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--surface-2); color: var(--muted); margin-left: 6px; vertical-align: 1px; }
   .tag.me { background: var(--accent-weak); color: var(--accent); }
@@ -234,7 +246,7 @@
 <!-- App -->
 <div class="wrap hidden" id="appView">
   <div class="banner hidden" id="simBanner">
-    실시간 시세(업비트)에 연결하지 못해 <b>시뮬레이션 시세</b>로 동작 중이에요. 이때 체결된 거래는 "시뮬" 표시가 붙어요.
+    실시간 코인 시세(업비트)에 연결하지 못해 <b>시뮬레이션 시세</b>로 동작 중이에요. 이때 체결된 코인 거래는 "시뮬" 표시가 붙어요.
   </div>
 
   <section class="summary">
@@ -254,7 +266,7 @@
       <div class="sub muted" id="sumCashSub">&nbsp;</div>
     </div>
     <div class="card stat">
-      <div class="label">보유 코인 평가</div>
+      <div class="label">보유 자산 평가</div>
       <div class="value num" id="sumEval">-</div>
       <div class="sub num" id="sumEvalSub">&nbsp;</div>
     </div>
@@ -270,14 +282,43 @@
 
   <section class="main">
     <div class="card">
-      <h2 class="section-title">시세 <span class="src" id="srcLabel">연결 중…</span></h2>
-      <div class="table-scroll">
-        <table>
-          <thead>
-            <tr><th>코인</th><th>현재가</th><th>전일대비</th><th class="hide-sm">거래대금(24h)</th></tr>
-          </thead>
-          <tbody id="marketBody"></tbody>
-        </table>
+      <div class="market-head">
+        <div class="asset-tabs" id="assetTabs">
+          <button data-asset="coin" class="active">코인</button>
+          <button data-asset="stock">국내주식</button>
+        </div>
+        <span class="src" id="srcLabel">연결 중…</span>
+      </div>
+
+      <div id="coinPane">
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr><th>코인</th><th>현재가</th><th>전일대비</th><th class="hide-sm">거래대금(24h)</th></tr>
+            </thead>
+            <tbody id="marketBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="stockPane" class="stock-pane hidden">
+        <div class="banner hidden" id="stockSampleBanner">
+          종가 데이터 파일을 찾지 못해 <b>예시 종가</b>로 동작 중이에요. 표시된 가격은 실제 가격이 아니에요.
+          예시 모드에서는 아래 버튼으로 다음 거래일 종가를 만들어 체결 과정을 확인할 수 있어요.
+          <br><button class="btn btn-sm" id="nextSampleDay">다음 거래일 종가 만들기 (예시)</button>
+        </div>
+        <div class="stock-tools">
+          <input class="input" id="stockSearch" placeholder="종목명 또는 종목코드 검색 (예: 삼성전자, 005930)" autocomplete="off">
+          <div class="stock-note" id="stockNote">국내주식은 <b>종가 기준</b>으로 체결돼요. 15시 30분 전 주문은 그날 종가, 이후 주문은 다음 거래일 종가로 체결됩니다.</div>
+        </div>
+        <div class="table-scroll stock-scroll">
+          <table>
+            <thead>
+              <tr><th>종목</th><th>종가</th><th>등락률</th><th class="hide-sm">거래대금</th></tr>
+            </thead>
+            <tbody id="stockBody"></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -286,6 +327,7 @@
         <div><span class="coin-name" id="oName">-</span> <span class="coin-sym" id="oSym"></span></div>
         <div class="price num" id="oPrice">-</div>
       </div>
+      <div class="price-note" id="oPriceNote"></div>
       <div class="seg">
         <button id="tabBuy" class="active-buy">매수</button>
         <button id="tabSell">매도</button>
@@ -303,7 +345,8 @@
       <div class="order-info">
         <div><span id="availLabel">주문 가능</span><span class="num" id="avail">-</span></div>
         <div><span id="estLabel">예상 수량</span><span class="num" id="est">-</span></div>
-        <div><span>수수료 (0.05%)</span><span class="num" id="fee">-</span></div>
+        <div><span id="feeLabel">수수료</span><span class="num" id="fee">-</span></div>
+        <div id="schedRow" class="hidden"><span>체결 예정</span><span id="sched">-</span></div>
       </div>
       <button class="submit buy" id="submitBtn">매수</button>
       <div class="msg" id="orderMsg"></div>
@@ -322,8 +365,9 @@
   </section>
 
   <footer>
-    입고수 시안 · 모의투자 서비스이며 실제 투자 권유가 아닙니다. 시세 출처: 업비트 공개 API (연결 실패 시 시뮬레이션).
-    거래 기록은 수정·삭제할 수 없습니다.
+    입고수 시안 · 모의투자 서비스이며 실제 투자 권유가 아닙니다.
+    코인 시세: 업비트 공개 API (연결 실패 시 시뮬레이션). 국내주식 시세: 공공데이터포털 금융위원회_주식시세정보 (일별 종가).
+    체결된 거래 기록은 수정·삭제할 수 없습니다.
   </footer>
 </div>
 
@@ -332,12 +376,17 @@
   "use strict";
 
   const START_CASH = 100_000_000;
-  const FEE_RATE = 0.0005;
   const MIN_ORDER = 5_000;
   const POLL_MS = 3_000;
+  const STOCK_REFRESH_MS = 10 * 60_000;
   const SNAPSHOT_MS = 30_000;
   const MAX_HISTORY = 600;
   const STORE_KEY = "ipgosu.v1";
+
+  const COIN_FEE = 0.0005;     // 업비트 원화마켓 수수료
+  const STOCK_FEE = 0.00015;   // 증권사 매매 수수료 (가정)
+  const STOCK_TAX = 0.002;     // 매도 시 증권거래세 (가정)
+  const CLOSE_CUTOFF_MIN = 15 * 60 + 30; // 15:30 KST
 
   const COINS = [
     { market: "KRW-BTC", name: "비트코인", base: 140_000_000 },
@@ -353,6 +402,16 @@
   ];
   const COIN_BY_MARKET = Object.fromEntries(COINS.map(c => [c.market, c]));
 
+  // Used only when no closing-price file is available. Prices are not real.
+  const SAMPLE_STOCKS = [
+    ["005930", "삼성전자", "P", 70_000], ["000660", "SK하이닉스", "P", 200_000],
+    ["373220", "LG에너지솔루션", "P", 350_000], ["207940", "삼성바이오로직스", "P", 900_000],
+    ["005380", "현대차", "P", 220_000], ["035420", "NAVER", "P", 200_000],
+    ["035720", "카카오", "P", 40_000], ["068270", "셀트리온", "P", 180_000],
+    ["105560", "KB금융", "P", 90_000], ["247540", "에코프로비엠", "Q", 120_000],
+    ["086520", "에코프로", "Q", 80_000], ["196170", "알테오젠", "Q", 350_000],
+  ];
+
   // ---------- Storage ----------
   function load() {
     try {
@@ -365,14 +424,26 @@
     try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); } catch (e) { /* ignore */ }
   }
   const db = load();
+  for (const u of Object.values(db.users)) u.orders ||= [];
 
   function newUser(name, demo = false) {
-    return { name, demo, createdAt: Date.now(), cash: START_CASH, holdings: {}, trades: [], history: [] };
+    return { name, demo, createdAt: Date.now(), cash: START_CASH, holdings: {}, trades: [], orders: [], history: [] };
   }
 
-  // ---------- Prices ----------
+  // ---------- Asset helpers ----------
+  const isStock = m => m.startsWith("KRX:");
+  const stockCode = m => m.slice(4);
+  const sym = m => isStock(m) ? stockCode(m) : m.replace("KRW-", "");
+  const stockMeta = {}; // code -> { name, market }
+  function assetName(m, fallback) {
+    if (isStock(m)) return stockMeta[stockCode(m)]?.name || fallback || stockCode(m);
+    return COIN_BY_MARKET[m]?.name || m;
+  }
+  const fmtQtyFor = (m, q) => isStock(m) ? Math.round(q).toLocaleString("ko-KR") + "주" : fmtQty(q) + " " + sym(m);
+
+  // ---------- Coin prices ----------
   const prices = {};   // market -> { price, change, volume }
-  let source = null;   // "live" | "sim"
+  let source = null;   // coin price source: "live" | "sim"
   let liveFailures = 0;
 
   async function fetchLive() {
@@ -415,7 +486,7 @@
         return;
       } catch (e) {
         liveFailures++;
-        if (liveFailures < 2 && Object.keys(prices).length) return;
+        if (liveFailures < 2 && COINS.some(c => prices[c.market])) return;
       }
     }
     source = "sim";
@@ -429,16 +500,127 @@
     return Math.round(p * 10000) / 10000;
   }
 
+  // ---------- Stock closing prices ----------
+  // mode "real": data/stocks/*.json written by the GitHub Action from 공공데이터포털.
+  // mode "sample": no data file reachable, so example closes are generated locally.
+  const stock = { mode: null, dates: [], days: {}, latest: null };
+
+  const ymdUTC = d => d.toISOString().slice(0, 10).replace(/-/g, "");
+  function kstNow(ts = Date.now()) {
+    const d = new Date(ts + 9 * 3600_000);
+    return { date: ymdUTC(d), minutes: d.getUTCHours() * 60 + d.getUTCMinutes() };
+  }
+  function addDays(ymd, n) {
+    const d = new Date(Date.UTC(+ymd.slice(0, 4), +ymd.slice(4, 6) - 1, +ymd.slice(6, 8) + n));
+    return ymdUTC(d);
+  }
+  function nextWeekday(ymd) {
+    let d = addDays(ymd, 1);
+    while ([0, 6].includes(new Date(Date.UTC(+d.slice(0, 4), +d.slice(4, 6) - 1, +d.slice(6, 8))).getUTCDay())) d = addDays(d, 1);
+    return d;
+  }
+  // Orders before 15:30 KST fill at that day's close; later ones at the next trading day's close.
+  function eligibleDate(ts) {
+    const { date, minutes } = kstNow(ts);
+    return minutes < CLOSE_CUTOFF_MIN ? date : addDays(date, 1);
+  }
+  // Never fill at a close that was already known when the order was placed.
+  function orderEligibleDate(ts) {
+    const e = eligibleDate(ts);
+    const afterLatest = stock.latest ? nextWeekday(stock.latest) : e;
+    return afterLatest > e ? afterLatest : e;
+  }
+  const fmtYmd = ymd => `${+ymd.slice(4, 6)}/${+ymd.slice(6, 8)}`;
+  const fmtYmdLong = ymd => {
+    const d = new Date(Date.UTC(+ymd.slice(0, 4), +ymd.slice(4, 6) - 1, +ymd.slice(6, 8)));
+    return `${+ymd.slice(4, 6)}/${+ymd.slice(6, 8)}(${"일월화수목금토"[d.getUTCDay()]})`;
+  };
+
+  function indexDay(date, rows) {
+    const byCode = {};
+    for (const r of rows) byCode[r[0]] = { code: r[0], name: r[1], market: r[2], close: r[3], pct: r[4], value: r[5] };
+    stock.days[date] = { rows, byCode };
+  }
+
+  async function loadDay(date) {
+    if (stock.days[date]) return stock.days[date];
+    if (stock.mode !== "real") return null;
+    try {
+      const res = await fetch(`data/stocks/${date}.json`, { cache: "no-store" });
+      if (!res.ok) return null;
+      const file = await res.json();
+      indexDay(date, file.rows);
+      return stock.days[date];
+    } catch (e) { return null; }
+  }
+
+  function ensureSampleDays() {
+    db.sample ||= { days: [] };
+    if (!db.sample.days.length) {
+      // Start from the last weekday before today so today's orders wait for the next close.
+      let d = addDays(kstNow().date, -1);
+      while ([0, 6].includes(new Date(Date.UTC(+d.slice(0, 4), +d.slice(4, 6) - 1, +d.slice(6, 8))).getUTCDay())) d = addDays(d, -1);
+      db.sample.days.push({ date: d, rows: SAMPLE_STOCKS.map(([c, n, m, p], i) => [c, n, m, p, 0, (SAMPLE_STOCKS.length - i) * 1e11]) });
+      save();
+    }
+    for (const day of db.sample.days) indexDay(day.date, day.rows);
+    stock.dates = db.sample.days.map(d => d.date);
+  }
+
+  function addSampleDay() {
+    const prev = db.sample.days[db.sample.days.length - 1];
+    const rows = prev.rows.map(([c, n, m, p, , v]) => {
+      const pct = Math.round((Math.random() - 0.5) * 600) / 100; // ±3%
+      return [c, n, m, Math.max(Math.round(p * (1 + pct / 100)), 1), pct, Math.round(v * (0.7 + Math.random() * 0.6))];
+    });
+    db.sample.days.push({ date: nextWeekday(prev.date), rows });
+    if (db.sample.days.length > 30) db.sample.days.shift();
+    save();
+    ensureSampleDays();
+  }
+
+  function applyLatestStockPrices() {
+    stock.latest = stock.dates[stock.dates.length - 1] || null;
+    for (const key of Object.keys(prices)) if (isStock(key)) delete prices[key];
+    const day = stock.days[stock.latest];
+    if (!day) return;
+    for (const r of Object.values(day.byCode)) {
+      prices["KRX:" + r.code] = { price: r.close, change: r.pct / 100, volume: r.value };
+      stockMeta[r.code] = { name: r.name, market: r.market };
+    }
+  }
+
+  async function refreshStocks() {
+    let index = null;
+    try {
+      const res = await fetch("data/stocks/latest.json", { cache: "no-store" });
+      if (res.ok) index = await res.json();
+    } catch (e) { /* fall back to sample */ }
+
+    if (index?.dates?.length) {
+      stock.mode = "real";
+      stock.dates = index.dates.slice().sort();
+      await loadDay(stock.dates[stock.dates.length - 1]);
+    } else if (stock.mode !== "real") {
+      stock.mode = "sample";
+      ensureSampleDays();
+    }
+    applyLatestStockPrices();
+    await settleAllOrders();
+  }
+
   // ---------- Portfolio math ----------
   function holdingsValue(u) {
     let v = 0;
     for (const [m, h] of Object.entries(u.holdings)) {
-      const p = prices[m]?.price;
+      const p = prices[m]?.price ?? h.lastPrice;
       if (p) v += h.qty * p;
     }
     return v;
   }
-  function totalValue(u) { return u.cash + holdingsValue(u); }
+  const reservedCash = u => u.orders.reduce((s, o) => s + (o.side === "buy" ? o.reserved : 0), 0);
+  const pendingSellQty = (u, m) => u.orders.reduce((s, o) => s + (o.side === "sell" && o.market === m ? o.qty : 0), 0);
+  function totalValue(u) { return u.cash + reservedCash(u) + holdingsValue(u); }
   function totalCost(u) { return Object.values(u.holdings).reduce((s, h) => s + h.cost, 0); }
 
   function maxDrawdown(history) {
@@ -458,12 +640,12 @@
     if (u.history.length > MAX_HISTORY) u.history.splice(0, u.history.length - MAX_HISTORY);
   }
 
-  // ---------- Orders ----------
-  function buy(u, market, krw) {
+  // ---------- Coin orders (filled immediately at the live price) ----------
+  function buyCoin(u, market, krw) {
     const price = prices[market]?.price;
     if (!price) return "시세를 불러오는 중이에요.";
     if (!(krw >= MIN_ORDER)) return `최소 주문 금액은 ${fmtKRW(MIN_ORDER)}이에요.`;
-    const fee = krw * FEE_RATE;
+    const fee = krw * COIN_FEE;
     if (krw + fee > u.cash + 1e-6) return "주문 가능 현금이 부족해요.";
     const qty = krw / price;
     const h = u.holdings[market] || { qty: 0, cost: 0 };
@@ -471,11 +653,11 @@
     h.cost += krw + fee;
     u.holdings[market] = h;
     u.cash -= krw + fee;
-    record(u, { side: "buy", market, price, qty, amount: krw, fee });
+    record(u, { side: "buy", market, price, qty, amount: krw, fee, source });
     return null;
   }
 
-  function sell(u, market, qty) {
+  function sellCoin(u, market, qty) {
     const price = prices[market]?.price;
     const h = u.holdings[market];
     if (!price) return "시세를 불러오는 중이에요.";
@@ -485,27 +667,133 @@
     qty = Math.min(qty, h.qty);
     const amount = qty * price;
     if (amount < MIN_ORDER && qty < h.qty) return `최소 주문 금액은 ${fmtKRW(MIN_ORDER)}이에요.`;
-    const fee = amount * FEE_RATE;
+    const fee = amount * COIN_FEE;
     const costPart = h.cost * (qty / h.qty);
     const pnl = amount - fee - costPart;
     h.qty -= qty;
     h.cost -= costPart;
     if (h.qty <= 1e-12) delete u.holdings[market];
     u.cash += amount - fee;
-    record(u, { side: "sell", market, price, qty, amount, fee, pnl });
+    record(u, { side: "sell", market, price, qty, amount, fee, pnl, source });
     return null;
+  }
+
+  // ---------- Stock orders (reserved now, filled at a later close) ----------
+  function placeStockOrder(u, market, side, value) {
+    const last = prices[market]?.price;
+    if (!last) return { err: "종가 데이터를 불러오는 중이에요." };
+    const now = Date.now();
+    const order = {
+      id: now.toString(36) + Math.random().toString(36).slice(2, 6),
+      side, market, name: assetName(market), placedAt: now, eligible: orderEligibleDate(now),
+    };
+    if (side === "buy") {
+      if (!(value >= last)) return { err: `최소 1주 이상 살 수 있는 금액을 입력해 주세요. (최근 종가 ${fmtKRW(last)})` };
+      const reserved = value * (1 + STOCK_FEE);
+      if (reserved > u.cash + 1e-6) return { err: "주문 가능 현금이 부족해요." };
+      u.cash -= reserved;
+      Object.assign(order, { amount: value, reserved });
+    } else {
+      const qty = Math.floor(value);
+      const avail = (u.holdings[market]?.qty || 0) - pendingSellQty(u, market);
+      if (!(qty >= 1)) return { err: "매도 수량을 1주 이상 입력해 주세요." };
+      if (qty > avail) return { err: `매도 가능 수량은 ${avail.toLocaleString("ko-KR")}주예요.` };
+      order.qty = qty;
+    }
+    u.orders.push(order);
+    save();
+    return { order };
+  }
+
+  function cancelOrder(u, id) {
+    const i = u.orders.findIndex(o => o.id === id);
+    if (i < 0) return;
+    const [o] = u.orders.splice(i, 1);
+    if (o.side === "buy") u.cash += o.reserved;
+    save();
+  }
+
+  // Finds the first close on or after the order's eligible date that includes the stock.
+  async function findFill(o) {
+    for (const date of stock.dates) {
+      if (date < o.eligible) continue;
+      const day = await loadDay(date);
+      const row = day?.byCode[stockCode(o.market)];
+      if (row) return { date, close: row.close };
+    }
+    return null;
+  }
+
+  async function settleOrders(u) {
+    let changed = false;
+    for (const o of u.orders.slice()) {
+      const fill = await findFill(o);
+      if (!fill) continue;
+      u.orders.splice(u.orders.indexOf(o), 1);
+      const { date, close } = fill;
+      const src = stock.mode === "sample" ? "sample" : "close";
+      if (o.side === "buy") {
+        const qty = Math.floor(o.amount / close);
+        if (qty < 1) {
+          u.cash += o.reserved;
+          record(u, { side: "void", market: o.market, name: o.name, price: close, qty: 0, amount: 0, fee: 0, basDt: date, placedAt: o.placedAt, source: src });
+          changed = true;
+          continue;
+        }
+        const amount = qty * close;
+        const fee = amount * STOCK_FEE;
+        const h = u.holdings[o.market] || { qty: 0, cost: 0 };
+        h.qty += qty;
+        h.cost += amount + fee;
+        h.name = o.name;
+        h.lastPrice = close;
+        u.holdings[o.market] = h;
+        u.cash += o.reserved - amount - fee;
+        record(u, { side: "buy", market: o.market, name: o.name, price: close, qty, amount, fee, basDt: date, placedAt: o.placedAt, source: src });
+      } else {
+        const h = u.holdings[o.market];
+        const qty = Math.min(o.qty, h?.qty || 0);
+        if (qty < 1) { changed = true; continue; }
+        const amount = qty * close;
+        const fee = amount * STOCK_FEE;
+        const tax = amount * STOCK_TAX;
+        const costPart = h.cost * (qty / h.qty);
+        h.qty -= qty;
+        h.cost -= costPart;
+        h.lastPrice = close;
+        if (h.qty < 1) delete u.holdings[o.market];
+        u.cash += amount - fee - tax;
+        record(u, { side: "sell", market: o.market, name: o.name, price: close, qty, amount, fee: fee + tax, pnl: amount - fee - tax - costPart, basDt: date, placedAt: o.placedAt, source: src });
+      }
+      changed = true;
+    }
+    return changed;
+  }
+
+  let settling = false;
+  async function settleAllOrders() {
+    if (settling || !stock.dates.length) return false;
+    settling = true;
+    let changed = false;
+    try {
+      for (const u of Object.values(db.users)) changed = (await settleOrders(u)) || changed;
+    } finally {
+      settling = false;
+    }
+    if (changed) save();
+    return changed;
   }
 
   function record(u, t) {
     // Append-only: trades are never edited or removed.
-    u.trades.push(Object.freeze({ ...t, at: Date.now(), source }));
+    u.trades.push(Object.freeze({ ...t, at: Date.now() }));
     snapshot(u, true);
     save();
   }
 
   // ---------- Demo accounts for ranking ----------
   function ensureDemoAccounts() {
-    if (db.users["말로만고수"] || !Object.keys(prices).length) return;
+    if (db.users["말로만고수"] || !COINS.every(c => prices[c.market])) return;
     const allIn = newUser("말로만고수", true);
     const doge = prices["KRW-DOGE"].price;
     allIn.cash = 0;
@@ -535,7 +823,6 @@
   const fmtQty = q => q.toLocaleString("ko-KR", { maximumFractionDigits: q >= 1 ? 4 : 8 });
   const fmtBig = n => n >= 1e12 ? (n / 1e12).toFixed(1) + "조" : n >= 1e8 ? Math.round(n / 1e8).toLocaleString("ko-KR") + "억" : Math.round(n / 1e4).toLocaleString("ko-KR") + "만";
   const cls = r => r > 0 ? "up" : r < 0 ? "down" : "";
-  const sym = m => m.replace("KRW-", "");
   const esc = s => String(s).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
   const fmtTime = t => new Date(t).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
@@ -544,6 +831,7 @@
   let selected = COINS[0].market;
   let side = "buy";
   let activeTab = "holdings";
+  let assetTab = "coin";
   const user = () => db.users[db.current];
 
   function showLogin() {
@@ -581,13 +869,14 @@
     const evalV = holdingsValue(u);
     const cost = totalCost(u);
     const evalPnl = evalV - cost;
+    const reserved = reservedCash(u);
     $("sumTotal").textContent = fmtKRW(total);
     $("sumTotalSub").innerHTML = `<span class="${cls(ret)}">${(total - START_CASH >= 0 ? "+" : "") + fmtKRW(total - START_CASH)}</span>`;
     $("sumReturn").innerHTML = `<span class="${cls(ret)}">${fmtPct(ret)}</span>`;
     $("sumCash").textContent = fmtKRW(u.cash);
-    $("sumCashSub").textContent = `자산의 ${total ? ((u.cash / total) * 100).toFixed(1) : 0}%`;
+    $("sumCashSub").textContent = reserved ? `체결 대기 ${fmtKRW(reserved)} 별도` : `자산의 ${total ? ((u.cash / total) * 100).toFixed(1) : 0}%`;
     $("sumEval").textContent = fmtKRW(evalV);
-    $("sumEvalSub").innerHTML = cost ? `<span class="${cls(evalPnl)}">평가손익 ${fmtPct(evalPnl / cost)}</span>` : `<span class="muted">보유 코인 없음</span>`;
+    $("sumEvalSub").innerHTML = cost ? `<span class="${cls(evalPnl)}">평가손익 ${fmtPct(evalPnl / cost)}</span>` : `<span class="muted">보유 자산 없음</span>`;
   }
 
   function renderChart() {
@@ -597,7 +886,7 @@
     const w = svg.clientWidth || 600, h = 140, pad = 8;
     svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
     const mdd = maxDrawdown(pts);
-    $("mddLabel").textContent = `최대 낙폭(MDD) ${(mdd * 100).toFixed(2)}%`;
+    $("mddLabel").textContent = `최대 낙폭(MDD) ${fmtMdd(mdd)}`;
     if (pts.length < 2) {
       svg.innerHTML = `<text x="${w / 2}" y="${h / 2}" text-anchor="middle" fill="var(--muted)" font-size="13">거래를 시작하면 자산 추이가 그려져요</text>`;
       return;
@@ -614,12 +903,19 @@
     const baseY = y(START_CASH).toFixed(1);
     svg.innerHTML = `
       <line x1="${pad}" x2="${w - pad}" y1="${baseY}" y2="${baseY}" stroke="var(--border)" stroke-dasharray="4 4"/>
-      <text x="${w - pad}" y="${Math.max(+baseY - 4, 12)}" text-anchor="end" fill="var(--muted)" font-size="11">시작 1억</text>
+      <text x="${pad + 2}" y="${Math.max(+baseY - 4, 12)}" fill="var(--muted)" font-size="11">시작 1억</text>
       <path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`;
   }
 
+  function renderSourceLabel() {
+    let text;
+    if (assetTab === "coin") text = source === "live" ? "업비트 실시간" : source === "sim" ? "시뮬레이션" : "연결 중…";
+    else text = stock.mode === "real" ? `종가 · ${fmtYmd(stock.latest)} 기준` : stock.mode === "sample" ? `예시 종가 · ${fmtYmd(stock.latest)}` : "불러오는 중…";
+    $("srcLabel").textContent = text;
+  }
+
   function renderMarkets() {
-    $("srcLabel").textContent = source === "live" ? "업비트 실시간" : source === "sim" ? "시뮬레이션" : "연결 중…";
+    renderSourceLabel();
     $("simBanner").classList.toggle("hidden", source !== "sim");
     $("marketBody").innerHTML = COINS.map(c => {
       const p = prices[c.market];
@@ -633,6 +929,40 @@
     }).join("");
   }
 
+  function renderStocks() {
+    renderSourceLabel();
+    $("stockSampleBanner").classList.toggle("hidden", stock.mode !== "sample");
+    const day = stock.days[stock.latest];
+    if (!day) {
+      $("stockBody").innerHTML = `<tr><td colspan="4" class="muted">${stock.mode ? "종가 데이터가 없어요." : "불러오는 중…"}</td></tr>`;
+      return;
+    }
+    const q = $("stockSearch").value.trim().toLowerCase();
+    let rows = day.rows;
+    if (q) rows = rows.filter(r => r[0].includes(q) || r[1].toLowerCase().includes(q));
+    rows = rows.slice(0, 50);
+    if (!rows.length) {
+      $("stockBody").innerHTML = `<tr><td colspan="4" class="muted">"${esc(q)}" 검색 결과가 없어요.</td></tr>`;
+      return;
+    }
+    $("stockBody").innerHTML = rows.map(([code, name, mkt, close, pct, value]) => {
+      const m = "KRX:" + code;
+      return `<tr class="market-row ${m === selected ? "selected" : ""}" data-m="${m}">
+        <td><div class="coin-name">${esc(name)}</div><div class="coin-sym">${code} · ${mkt === "Q" ? "코스닥" : "코스피"}</div></td>
+        <td class="num ${cls(pct)}">${close.toLocaleString("ko-KR")}</td>
+        <td class="num ${cls(pct)}">${(pct > 0 ? "+" : "") + pct.toFixed(2)}%</td>
+        <td class="num muted hide-sm">${fmtBig(value)}</td>
+      </tr>`;
+    }).join("");
+  }
+
+  function renderAssetTabs() {
+    for (const b of $("assetTabs").querySelectorAll("button")) b.classList.toggle("active", b.dataset.asset === assetTab);
+    $("coinPane").classList.toggle("hidden", assetTab !== "coin");
+    $("stockPane").classList.toggle("hidden", assetTab !== "stock");
+    renderSourceLabel();
+  }
+
   function parseAmount() {
     const v = parseFloat($("amount").value.replace(/,/g, ""));
     return isFinite(v) ? v : 0;
@@ -640,76 +970,129 @@
 
   function renderOrder() {
     const u = user();
-    const c = COIN_BY_MARKET[selected];
     const p = prices[selected];
-    $("oName").textContent = c.name;
+    const stockMode = isStock(selected);
+    $("oName").textContent = assetName(selected, u.holdings[selected]?.name);
     $("oSym").textContent = sym(selected);
     $("oPrice").innerHTML = p ? `<span class="${cls(p.change)}">${fmtPrice(p.price)}</span>` : "-";
+    $("oPriceNote").textContent = stockMode && stock.latest ? `${fmtYmd(stock.latest)} 종가${stock.mode === "sample" ? " (예시)" : ""}` : "";
     $("tabBuy").className = side === "buy" ? "active-buy" : "";
     $("tabSell").className = side === "sell" ? "active-sell" : "";
     const btn = $("submitBtn");
     btn.className = "submit " + side;
-    btn.textContent = side === "buy" ? "매수" : "매도";
+    btn.textContent = (side === "buy" ? "매수" : "매도") + (stockMode ? " 예약" : "");
+    btn.disabled = !p;
     const amt = parseAmount();
-    const held = u.holdings[selected]?.qty || 0;
+    $("schedRow").classList.toggle("hidden", !stockMode);
+
+    if (!stockMode) {
+      const held = u.holdings[selected]?.qty || 0;
+      $("feeLabel").textContent = "수수료 (0.05%)";
+      if (side === "buy") {
+        $("amountLabel").textContent = "주문 금액 (원)";
+        $("availLabel").textContent = "주문 가능";
+        $("avail").textContent = fmtKRW(u.cash);
+        $("estLabel").textContent = "예상 수량";
+        $("est").textContent = p && amt ? fmtQty(amt / p.price) + " " + sym(selected) : "-";
+        $("fee").textContent = amt ? fmtKRW(amt * COIN_FEE) : "-";
+      } else {
+        $("amountLabel").textContent = `매도 수량 (${sym(selected)})`;
+        $("availLabel").textContent = "보유 수량";
+        $("avail").textContent = fmtQty(held) + " " + sym(selected);
+        $("estLabel").textContent = "예상 금액";
+        $("est").textContent = p && amt ? fmtKRW(amt * p.price) : "-";
+        $("fee").textContent = p && amt ? fmtKRW(amt * p.price * COIN_FEE) : "-";
+      }
+      return;
+    }
+
+    const avail = (u.holdings[selected]?.qty || 0) - pendingSellQty(u, selected);
+    $("sched").textContent = `${fmtYmdLong(orderEligibleDate(Date.now()))} 이후 첫 종가`;
     if (side === "buy") {
+      const shares = p && amt ? Math.floor(amt / p.price) : 0;
       $("amountLabel").textContent = "주문 금액 (원)";
       $("availLabel").textContent = "주문 가능";
       $("avail").textContent = fmtKRW(u.cash);
-      $("estLabel").textContent = "예상 수량";
-      $("est").textContent = p && amt ? fmtQty(amt / p.price) + " " + sym(selected) : "-";
-      $("fee").textContent = amt ? fmtKRW(amt * FEE_RATE) : "-";
+      $("estLabel").textContent = "예상 수량 (최근 종가 기준)";
+      $("est").textContent = amt ? shares.toLocaleString("ko-KR") + "주" : "-";
+      $("feeLabel").textContent = "수수료 (0.015%)";
+      $("fee").textContent = amt ? fmtKRW(amt * STOCK_FEE) : "-";
     } else {
-      $("amountLabel").textContent = `매도 수량 (${sym(selected)})`;
-      $("availLabel").textContent = "보유 수량";
-      $("avail").textContent = fmtQty(held) + " " + sym(selected);
-      $("estLabel").textContent = "예상 금액";
-      $("est").textContent = p && amt ? fmtKRW(amt * p.price) : "-";
-      $("fee").textContent = p && amt ? fmtKRW(amt * p.price * FEE_RATE) : "-";
+      $("amountLabel").textContent = "매도 수량 (주)";
+      $("availLabel").textContent = "매도 가능";
+      $("avail").textContent = avail.toLocaleString("ko-KR") + "주";
+      $("estLabel").textContent = "예상 금액 (최근 종가 기준)";
+      $("est").textContent = p && amt ? fmtKRW(Math.floor(amt) * p.price) : "-";
+      $("feeLabel").textContent = "수수료+세금 (0.215%)";
+      $("fee").textContent = p && amt ? fmtKRW(Math.floor(amt) * p.price * (STOCK_FEE + STOCK_TAX)) : "-";
     }
-    btn.disabled = !p;
   }
 
   function renderHoldings() {
     const u = user();
     const rows = Object.entries(u.holdings);
-    if (!rows.length) {
-      $("tab-holdings").innerHTML = `<div class="empty">아직 보유한 코인이 없어요. 위 시세표에서 코인을 골라 매수해 보세요.</div>`;
-      return;
+    let html = "";
+    if (u.orders.length) {
+      html += `<div class="sub-title">체결 대기 주문 (종가 체결 예정)</div><div class="table-scroll"><table>
+        <thead><tr><th>종목</th><th>구분</th><th>주문</th><th class="hide-sm">접수 시각</th><th>체결 기준</th><th></th></tr></thead>
+        <tbody>${u.orders.map(o => `<tr>
+          <td><div class="coin-name">${esc(o.name)}</div><div class="coin-sym">${sym(o.market)}</div></td>
+          <td class="${o.side === "buy" ? "side-buy" : "side-sell"}">${o.side === "buy" ? "매수" : "매도"}</td>
+          <td class="num">${o.side === "buy" ? fmtKRW(o.amount) : o.qty.toLocaleString("ko-KR") + "주"}</td>
+          <td class="num muted hide-sm">${fmtTime(o.placedAt)}</td>
+          <td class="num">${fmtYmdLong(o.eligible)}~</td>
+          <td><button class="btn btn-sm" data-cancel="${o.id}">취소</button></td>
+        </tr>`).join("")}</tbody></table></div>`;
     }
-    $("tab-holdings").innerHTML = `<div class="table-scroll"><table>
-      <thead><tr><th>코인</th><th>보유 수량</th><th class="hide-sm">평균 매수가</th><th>평가 금액</th><th>수익률</th></tr></thead>
+    if (!rows.length) {
+      html += `<div class="empty">아직 보유한 자산이 없어요. 위 시세표에서 코인이나 국내주식을 골라 매수해 보세요.</div>`;
+    } else {
+      html += `${u.orders.length ? '<div class="sub-title">보유 자산</div>' : ""}<div class="table-scroll"><table>
+      <thead><tr><th>종목</th><th>보유 수량</th><th class="hide-sm">평균 매수가</th><th>평가 금액</th><th>수익률</th></tr></thead>
       <tbody>${rows.map(([m, h]) => {
-        const p = prices[m]?.price || 0;
+        const p = prices[m]?.price ?? h.lastPrice ?? 0;
         const v = h.qty * p;
         const r = h.cost ? v / h.cost - 1 : 0;
         return `<tr class="market-row" data-m="${m}">
-          <td><div class="coin-name">${COIN_BY_MARKET[m]?.name || m}</div><div class="coin-sym">${sym(m)}</div></td>
-          <td class="num">${fmtQty(h.qty)}</td>
+          <td><div class="coin-name">${esc(assetName(m, h.name))}</div><div class="coin-sym">${sym(m)}${isStock(m) ? " · 종가 평가" : ""}</div></td>
+          <td class="num">${fmtQtyFor(m, h.qty)}</td>
           <td class="num hide-sm">${fmtPrice(h.cost / h.qty)}</td>
           <td class="num">${fmtKRW(v)}</td>
           <td class="num ${cls(r)}">${fmtPct(r)}</td>
         </tr>`;
       }).join("")}</tbody></table></div>`;
+    }
+    $("tab-holdings").innerHTML = html;
+  }
+
+  function tradeTags(t) {
+    if (t.source === "sim") return '<span class="tag">시뮬</span>';
+    if (t.source === "sample") return `<span class="tag">예시 · ${fmtYmd(t.basDt)} 종가</span>`;
+    if (t.source === "close") return `<span class="tag">${fmtYmd(t.basDt)} 종가</span>`;
+    return "";
   }
 
   function renderTrades() {
     const u = user();
     if (!u.trades.length) {
-      $("tab-trades").innerHTML = `<div class="empty">거래 내역이 없어요. 모든 거래는 기록되고 수정·삭제할 수 없어요.</div>`;
+      $("tab-trades").innerHTML = `<div class="empty">거래 내역이 없어요. 체결된 거래는 기록되고 수정·삭제할 수 없어요.</div>`;
       return;
     }
     $("tab-trades").innerHTML = `<div class="table-scroll"><table>
-      <thead><tr><th>시각</th><th>구분</th><th>코인</th><th>체결가</th><th class="hide-sm">수량</th><th>금액</th><th class="hide-sm">실현손익</th></tr></thead>
-      <tbody>${u.trades.slice().reverse().map(t => `<tr>
+      <thead><tr><th>체결 시각</th><th>구분</th><th>종목</th><th>체결가</th><th class="hide-sm">수량</th><th>금액</th><th class="hide-sm">실현손익</th></tr></thead>
+      <tbody>${u.trades.slice().reverse().map(t => {
+        const label = t.side === "buy" ? "매수" : t.side === "sell" ? "매도" : "미체결(환불)";
+        const sideCls = t.side === "buy" ? "side-buy" : t.side === "sell" ? "side-sell" : "muted";
+        return `<tr>
         <td class="num muted">${fmtTime(t.at)}</td>
-        <td class="${t.side === "buy" ? "side-buy" : "side-sell"}">${t.side === "buy" ? "매수" : "매도"}${t.source === "sim" ? '<span class="tag">시뮬</span>' : ""}</td>
-        <td>${sym(t.market)}</td>
+        <td class="${sideCls}">${label}${tradeTags(t)}</td>
+        <td>${esc(isStock(t.market) ? (t.name || sym(t.market)) : sym(t.market))}</td>
         <td class="num">${fmtPrice(t.price)}</td>
-        <td class="num hide-sm">${fmtQty(t.qty)}</td>
-        <td class="num">${fmtKRW(t.amount)}</td>
+        <td class="num hide-sm">${t.qty ? fmtQtyFor(t.market, t.qty) : "-"}</td>
+        <td class="num">${t.amount ? fmtKRW(t.amount) : "-"}</td>
         <td class="num hide-sm ${t.pnl != null ? cls(t.pnl) : ""}">${t.pnl != null ? (t.pnl >= 0 ? "+" : "") + fmtKRW(t.pnl) : "-"}</td>
-      </tr>`).join("")}</tbody></table></div>`;
+      </tr>`;
+      }).join("")}</tbody></table></div>`;
   }
 
   function renderRanking() {
@@ -720,7 +1103,7 @@
       return {
         u, total, ret: total / START_CASH - 1,
         mdd: maxDrawdown([...u.history, { t: Date.now(), v: total }]),
-        count: u.trades.length,
+        count: u.trades.filter(t => t.side !== "void").length,
         winRate: sells.length ? wins / sells.length : null,
       };
     }).sort((a, b) => b.ret - a.ret);
@@ -749,7 +1132,9 @@
 
   function renderAll() {
     if (!user()) return;
+    renderAssetTabs();
     renderMarkets();
+    renderStocks();
     renderSummary();
     renderChart();
     renderOrder();
@@ -758,7 +1143,7 @@
 
   function setMsg(text, ok) {
     const el = $("orderMsg");
-    el.textContent = text;
+    el.textContent = text || "";
     el.style.color = ok ? "var(--accent)" : "var(--up)";
   }
 
@@ -768,17 +1153,40 @@
   $("logoutBtn").addEventListener("click", () => { db.current = null; save(); showLogin(); });
 
   function selectMarket(m) {
-    if (!COIN_BY_MARKET[m]) return;
+    if (!COIN_BY_MARKET[m] && !isStock(m)) return;
     selected = m;
     $("amount").value = "";
     setMsg("");
     renderMarkets();
+    renderStocks();
     renderOrder();
   }
   $("marketBody").addEventListener("click", e => { const r = e.target.closest("[data-m]"); if (r) selectMarket(r.dataset.m); });
+  $("stockBody").addEventListener("click", e => { const r = e.target.closest("[data-m]"); if (r) selectMarket(r.dataset.m); });
+  $("stockSearch").addEventListener("input", renderStocks);
+  $("assetTabs").addEventListener("click", e => {
+    const a = e.target.dataset?.asset;
+    if (a) { assetTab = a; renderAssetTabs(); }
+  });
+  $("nextSampleDay").addEventListener("click", async () => {
+    if (stock.mode !== "sample") return;
+    addSampleDay();
+    applyLatestStockPrices();
+    await settleAllOrders();
+    renderAll();
+  });
+
   $("tab-holdings").addEventListener("click", e => {
+    const c = e.target.dataset?.cancel;
+    if (c) { cancelOrder(user(), c); renderAll(); return; }
     const r = e.target.closest("[data-m]");
-    if (r) { selectMarket(r.dataset.m); side = "sell"; renderOrder(); }
+    if (r) {
+      assetTab = isStock(r.dataset.m) ? "stock" : "coin";
+      renderAssetTabs();
+      selectMarket(r.dataset.m);
+      side = "sell";
+      renderOrder();
+    }
   });
 
   $("tabBuy").addEventListener("click", () => { side = "buy"; $("amount").value = ""; setMsg(""); renderOrder(); });
@@ -790,7 +1198,11 @@
     if (!p) return;
     const u = user();
     if (side === "buy") {
-      $("amount").value = Math.floor((u.cash * p) / (1 + FEE_RATE)).toLocaleString("ko-KR");
+      const rate = isStock(selected) ? STOCK_FEE : COIN_FEE;
+      $("amount").value = Math.floor((u.cash * p) / (1 + rate)).toLocaleString("ko-KR");
+    } else if (isStock(selected)) {
+      const avail = (u.holdings[selected]?.qty || 0) - pendingSellQty(u, selected);
+      $("amount").value = String(Math.floor(avail * p));
     } else {
       const held = u.holdings[selected]?.qty || 0;
       $("amount").value = p === 1 ? String(held) : String(+(held * p).toFixed(8));
@@ -801,10 +1213,16 @@
   $("submitBtn").addEventListener("click", () => {
     const u = user();
     const amt = parseAmount();
-    const err = side === "buy" ? buy(u, selected, amt) : sell(u, selected, amt);
-    if (err) { setMsg(err, false); return; }
-    const t = u.trades[u.trades.length - 1];
-    setMsg(`${sym(selected)} ${fmtQty(t.qty)}개 ${side === "buy" ? "매수" : "매도"} 체결 (${fmtPrice(t.price)}원)`, true);
+    if (isStock(selected)) {
+      const { err, order } = placeStockOrder(u, selected, side, amt);
+      if (err) { setMsg(err, false); return; }
+      setMsg(`${order.name} ${side === "buy" ? fmtKRW(order.amount) + " 매수" : order.qty.toLocaleString("ko-KR") + "주 매도"} 예약 완료. ${fmtYmdLong(order.eligible)} 이후 첫 종가로 체결돼요.`, true);
+    } else {
+      const err = side === "buy" ? buyCoin(u, selected, amt) : sellCoin(u, selected, amt);
+      if (err) { setMsg(err, false); return; }
+      const t = u.trades[u.trades.length - 1];
+      setMsg(`${sym(selected)} ${fmtQty(t.qty)}개 ${side === "buy" ? "매수" : "매도"} 체결 (${fmtPrice(t.price)}원)`, true);
+    }
     $("amount").value = "";
     renderAll();
   });
@@ -831,9 +1249,16 @@
     }
   }
 
+  async function stockTick() {
+    await refreshStocks();
+    if (user()) renderAll();
+  }
+
   if (db.current && db.users[db.current]) showApp(); else showLogin();
   tick();
+  stockTick();
   setInterval(tick, POLL_MS);
+  setInterval(stockTick, STOCK_REFRESH_MS);
 })();
 </script>
 </body>
