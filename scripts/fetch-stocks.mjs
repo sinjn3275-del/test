@@ -48,7 +48,10 @@ async function fetchDay(basDt) {
       const market = MARKETS[it.mrktCtg];
       const close = Number(it.clpr);
       if (!market || !(close > 0)) continue;
-      rows.push([it.srtnCd, it.itmsNm, market, close, Number(it.fltRt) || 0, Number(it.trPrc) || 0]);
+      rows.push([
+        it.srtnCd, it.itmsNm, market, close, Number(it.fltRt) || 0, Number(it.trPrc) || 0,
+        Number(it.mkp) || close, Number(it.hipr) || close, Number(it.lopr) || close,
+      ]);
     }
     const total = Number(body?.totalCount) || 0;
     if (!items.length || pageNo * 1000 >= total) break;
@@ -90,7 +93,7 @@ async function main() {
       console.log(`${basDt}: no data (holiday or not published yet)`);
       continue;
     }
-    const file = { date: basDt, fields: ["code", "name", "market", "close", "changePct", "tradeValue"], rows };
+    const file = { date: basDt, fields: ["code", "name", "market", "close", "changePct", "tradeValue", "open", "high", "low"], rows };
     await writeFile(path.join(OUT_DIR, `${basDt}.json`), JSON.stringify(file));
     dates.add(basDt);
     added++;

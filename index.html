@@ -170,6 +170,12 @@
   .seg button { border: 0; background: transparent; padding: 8px; border-radius: 8px; cursor: pointer; font-weight: 600; color: var(--muted); }
   .seg button.active-buy { background: var(--up); color: #fff; }
   .seg button.active-sell { background: var(--down); color: #fff; }
+  .type-seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 14px; }
+  .type-seg button { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 7px 0; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--muted); }
+  .type-seg button.active { border-color: var(--accent); background: var(--accent-weak); color: var(--accent); }
+  .type-help { font-size: 12px; color: var(--muted); margin: -8px 0 14px; }
+  .ext-link { font-size: 12px; color: var(--accent); text-decoration: none; }
+  .ext-link:hover { text-decoration: underline; }
   .pct { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 14px; }
   .pct button { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 6px 0; cursor: pointer; font-size: 13px; }
   .pct button:hover { background: var(--surface-2); }
@@ -313,7 +319,7 @@
         </div>
         <div class="stock-tools">
           <input class="input" id="stockSearch" placeholder="종목명 또는 종목코드 검색 (예: 삼성전자, 005930)" autocomplete="off">
-          <div class="stock-note" id="stockNote">국내주식은 <b>종가 기준</b>으로 체결돼요. 15시 30분 전 주문은 그날 종가, 이후 주문은 다음 거래일 종가로 체결됩니다.</div>
+          <div class="stock-note" id="stockNote">국내주식은 공공데이터 일별 시세로 체결돼요. <b>종가·시가·지정가</b> 주문을 고를 수 있고, 체결 결과는 다음 영업일 오후에 반영돼요.</div>
         </div>
         <div class="table-scroll stock-scroll">
           <table>
@@ -331,10 +337,20 @@
         <div><span class="coin-name" id="oName">-</span> <span class="coin-sym" id="oSym"></span></div>
         <div class="price num" id="oPrice">-</div>
       </div>
-      <div class="price-note" id="oPriceNote"></div>
+      <div class="price-note"><span id="oPriceNote"></span> <a class="ext-link hidden" id="oLink" target="_blank" rel="noopener">현재가 보기 ↗</a></div>
       <div class="seg">
         <button id="tabBuy" class="active-buy">매수</button>
         <button id="tabSell">매도</button>
+      </div>
+      <div class="type-seg hidden" id="typeSeg">
+        <button data-type="close" class="active">종가</button>
+        <button data-type="open">시가</button>
+        <button data-type="limit">지정가</button>
+      </div>
+      <div class="type-help hidden" id="typeHelp"></div>
+      <div class="field hidden" id="limitField">
+        <label for="limitPrice">지정가 (원)</label>
+        <input class="input num" id="limitPrice" inputmode="numeric" placeholder="0">
       </div>
       <div class="field">
         <label for="amount" id="amountLabel">주문 금액 (원)</label>
@@ -390,7 +406,11 @@
   const COIN_FEE = 0.0005;     // 업비트 원화마켓 수수료
   const STOCK_FEE = 0.00015;   // 증권사 매매 수수료 (가정)
   const STOCK_TAX = 0.002;     // 매도 시 증권거래세 (가정)
-  const CLOSE_CUTOFF_MIN = 15 * 60 + 30; // 15:30 KST
+  const OPEN_CUTOFF_MIN = 9 * 60;         // 09:00 KST
+  const CLOSE_CUTOFF_MIN = 15 * 60 + 30;  // 15:30 KST
+  const LIMIT_DAYS = 5;                   // 지정가 주문 유효 거래일 수
+  const PRICE_LIMIT = 0.3;                // 지정가 허용 범위: 최근 종가 ±30%
+  const ORDER_TYPE_LABEL = { close: "종가", open: "시가", limit: "지정가" };
 
   const COINS = [
     { market: "KRW-BTC", name: "비트코인", base: 140_000_000 },
@@ -523,14 +543,19 @@
     while ([0, 6].includes(new Date(Date.UTC(+d.slice(0, 4), +d.slice(4, 6) - 1, +d.slice(6, 8))).getUTCDay())) d = addDays(d, 1);
     return d;
   }
-  // Orders before 15:30 KST fill at that day's close; later ones at the next trading day's close.
-  function eligibleDate(ts) {
+  // First trading date whose prices can fill an order placed at ts:
+  //   close: before 15:30 → that day's close, otherwise the next day's.
+  //   open:  before 09:00 → that day's open, otherwise the next day's.
+  //   limit: always from the next day, since part of today's range may already be known.
+  function eligibleDate(ts, type) {
     const { date, minutes } = kstNow(ts);
-    return minutes < CLOSE_CUTOFF_MIN ? date : addDays(date, 1);
+    if (type === "limit") return addDays(date, 1);
+    const cutoff = type === "open" ? OPEN_CUTOFF_MIN : CLOSE_CUTOFF_MIN;
+    return minutes < cutoff ? date : addDays(date, 1);
   }
-  // Never fill at a close that was already known when the order was placed.
-  function orderEligibleDate(ts) {
-    const e = eligibleDate(ts);
+  // Never fill at prices that were already published when the order was placed.
+  function orderEligibleDate(ts, type) {
+    const e = eligibleDate(ts, type);
     const afterLatest = stock.latest ? nextWeekday(stock.latest) : e;
     return afterLatest > e ? afterLatest : e;
   }
@@ -542,7 +567,12 @@
 
   function indexDay(date, rows) {
     const byCode = {};
-    for (const r of rows) byCode[r[0]] = { code: r[0], name: r[1], market: r[2], close: r[3], pct: r[4], value: r[5] };
+    for (const r of rows) {
+      byCode[r[0]] = {
+        code: r[0], name: r[1], market: r[2], close: r[3], pct: r[4], value: r[5],
+        open: r[6] ?? r[3], high: r[7] ?? r[3], low: r[8] ?? r[3],
+      };
+    }
     stock.days[date] = { rows, byCode };
   }
 
@@ -575,7 +605,11 @@
     const prev = db.sample.days[db.sample.days.length - 1];
     const rows = prev.rows.map(([c, n, m, p, , v]) => {
       const pct = Math.round((Math.random() - 0.5) * 600) / 100; // ±3%
-      return [c, n, m, Math.max(Math.round(p * (1 + pct / 100)), 1), pct, Math.round(v * (0.7 + Math.random() * 0.6))];
+      const close = Math.max(Math.round(p * (1 + pct / 100)), 1);
+      const open = Math.max(Math.round(p * (1 + (Math.random() - 0.5) * 0.02)), 1);
+      const high = Math.round(Math.max(open, close) * (1 + Math.random() * 0.015));
+      const low = Math.max(Math.round(Math.min(open, close) * (1 - Math.random() * 0.015)), 1);
+      return [c, n, m, close, pct, Math.round(v * (0.7 + Math.random() * 0.6)), open, high, low];
     });
     db.sample.days.push({ date: nextWeekday(prev.date), rows });
     if (db.sample.days.length > 30) db.sample.days.shift();
@@ -682,16 +716,37 @@
     return null;
   }
 
-  // ---------- Stock orders (reserved now, filled at a later close) ----------
-  function placeStockOrder(u, market, side, value) {
+  // ---------- Stock orders (reserved now, filled from a later day's prices) ----------
+  // type "close" | "open": buy by amount (converted to whole shares at fill), sell by shares.
+  // type "limit": buy/sell whole shares at the limit price or better, valid for LIMIT_DAYS trading days.
+  function placeStockOrder(u, market, side, type, value, limit) {
     const last = prices[market]?.price;
     if (!last) return { err: "종가 데이터를 불러오는 중이에요." };
     const now = Date.now();
     const order = {
       id: now.toString(36) + Math.random().toString(36).slice(2, 6),
-      side, market, name: assetName(market), placedAt: now, eligible: orderEligibleDate(now),
+      side, type, market, name: assetName(market), placedAt: now, eligible: orderEligibleDate(now, type),
     };
-    if (side === "buy") {
+    const avail = (u.holdings[market]?.qty || 0) - pendingSellQty(u, market);
+
+    if (type === "limit") {
+      limit = Math.round(limit);
+      if (!(limit > 0)) return { err: "지정가를 입력해 주세요." };
+      if (Math.abs(limit / last - 1) > PRICE_LIMIT) {
+        return { err: `지정가는 최근 종가의 ±30% (${fmtKRW(Math.ceil(last * (1 - PRICE_LIMIT)))} ~ ${fmtKRW(Math.floor(last * (1 + PRICE_LIMIT)))}) 안에서 입력해 주세요.` };
+      }
+      const qty = Math.floor(value);
+      if (!(qty >= 1)) return { err: "수량을 1주 이상 입력해 주세요." };
+      if (side === "buy") {
+        const reserved = qty * limit * (1 + STOCK_FEE);
+        if (reserved > u.cash + 1e-6) return { err: "주문 가능 현금이 부족해요." };
+        u.cash -= reserved;
+        Object.assign(order, { qty, limit, reserved });
+      } else {
+        if (qty > avail) return { err: `매도 가능 수량은 ${avail.toLocaleString("ko-KR")}주예요.` };
+        Object.assign(order, { qty, limit });
+      }
+    } else if (side === "buy") {
       if (!(value >= last)) return { err: `최소 1주 이상 살 수 있는 금액을 입력해 주세요. (최근 종가 ${fmtKRW(last)})` };
       const reserved = value * (1 + STOCK_FEE);
       if (reserved > u.cash + 1e-6) return { err: "주문 가능 현금이 부족해요." };
@@ -699,7 +754,6 @@
       Object.assign(order, { amount: value, reserved });
     } else {
       const qty = Math.floor(value);
-      const avail = (u.holdings[market]?.qty || 0) - pendingSellQty(u, market);
       if (!(qty >= 1)) return { err: "매도 수량을 1주 이상 입력해 주세요." };
       if (qty > avail) return { err: `매도 가능 수량은 ${avail.toLocaleString("ko-KR")}주예요.` };
       order.qty = qty;
@@ -717,13 +771,22 @@
     save();
   }
 
-  // Finds the first close on or after the order's eligible date that includes the stock.
+  // Walks trading days from the order's eligible date and decides its outcome:
+  // { date, price } when filled, { date, expired: true } when a limit order runs out, or null to keep waiting.
   async function findFill(o) {
+    const type = o.type || "close";
+    let tradingDays = 0;
     for (const date of stock.dates) {
       if (date < o.eligible) continue;
       const day = await loadDay(date);
       const row = day?.byCode[stockCode(o.market)];
-      if (row) return { date, close: row.close };
+      if (!row) continue;
+      if (type === "close") return { date, price: row.close };
+      if (type === "open") return { date, price: row.open };
+      // Limit: a gap past the limit fills at the better opening price.
+      if (o.side === "buy" && row.low <= o.limit) return { date, price: Math.min(o.limit, row.open) };
+      if (o.side === "sell" && row.high >= o.limit) return { date, price: Math.max(o.limit, row.open) };
+      if (++tradingDays >= LIMIT_DAYS) return { date, expired: true };
     }
     return null;
   }
@@ -734,42 +797,48 @@
       const fill = await findFill(o);
       if (!fill) continue;
       u.orders.splice(u.orders.indexOf(o), 1);
-      const { date, close } = fill;
-      const src = stock.mode === "sample" ? "sample" : "close";
+      changed = true;
+      const { date, price } = fill;
+      const type = o.type || "close";
+      const base = { market: o.market, name: o.name, orderType: type, limit: o.limit, basDt: date, placedAt: o.placedAt, source: stock.mode === "sample" ? "sample" : "close" };
+
+      if (fill.expired) {
+        if (o.side === "buy") u.cash += o.reserved;
+        record(u, { ...base, side: "void", reason: "기간 만료", price: o.limit, qty: 0, amount: 0, fee: 0 });
+        continue;
+      }
       if (o.side === "buy") {
-        const qty = Math.floor(o.amount / close);
+        const qty = type === "limit" ? o.qty : Math.floor(o.amount / price);
         if (qty < 1) {
           u.cash += o.reserved;
-          record(u, { side: "void", market: o.market, name: o.name, price: close, qty: 0, amount: 0, fee: 0, basDt: date, placedAt: o.placedAt, source: src });
-          changed = true;
+          record(u, { ...base, side: "void", reason: "미체결(환불)", price, qty: 0, amount: 0, fee: 0 });
           continue;
         }
-        const amount = qty * close;
+        const amount = qty * price;
         const fee = amount * STOCK_FEE;
         const h = u.holdings[o.market] || { qty: 0, cost: 0 };
         h.qty += qty;
         h.cost += amount + fee;
         h.name = o.name;
-        h.lastPrice = close;
+        h.lastPrice = price;
         u.holdings[o.market] = h;
         u.cash += o.reserved - amount - fee;
-        record(u, { side: "buy", market: o.market, name: o.name, price: close, qty, amount, fee, basDt: date, placedAt: o.placedAt, source: src });
+        record(u, { ...base, side: "buy", price, qty, amount, fee });
       } else {
         const h = u.holdings[o.market];
         const qty = Math.min(o.qty, h?.qty || 0);
-        if (qty < 1) { changed = true; continue; }
-        const amount = qty * close;
+        if (qty < 1) continue;
+        const amount = qty * price;
         const fee = amount * STOCK_FEE;
         const tax = amount * STOCK_TAX;
         const costPart = h.cost * (qty / h.qty);
         h.qty -= qty;
         h.cost -= costPart;
-        h.lastPrice = close;
+        h.lastPrice = price;
         if (h.qty < 1) delete u.holdings[o.market];
         u.cash += amount - fee - tax;
-        record(u, { side: "sell", market: o.market, name: o.name, price: close, qty, amount, fee: fee + tax, pnl: amount - fee - tax - costPart, basDt: date, placedAt: o.placedAt, source: src });
+        record(u, { ...base, side: "sell", price, qty, amount, fee: fee + tax, pnl: amount - fee - tax - costPart });
       }
-      changed = true;
     }
     return changed;
   }
@@ -836,6 +905,7 @@
   let side = "buy";
   let activeTab = "holdings";
   let assetTab = "coin";
+  let orderType = "close";
   const user = () => db.users[db.current];
 
   function showLogin() {
@@ -970,6 +1040,17 @@
     renderSourceLabel();
   }
 
+  const parseNum = id => { const v = parseFloat($(id).value.replace(/,/g, "")); return isFinite(v) ? v : 0; };
+  function typeHelpText(type) {
+    if (type === "open") return "09:00 전 주문은 그날 시가, 이후 주문은 다음 거래일 시가로 체결돼요.";
+    if (type === "limit") return `정한 가격 이하(매수)·이상(매도)에 거래되면 그 가격으로 체결돼요. 다음 거래일부터 ${LIMIT_DAYS}거래일 동안 유효해요.`;
+    return "15:30 전 주문은 그날 종가, 이후 주문은 다음 거래일 종가로 체결돼요.";
+  }
+  function schedText(type) {
+    const d = fmtYmdLong(orderEligibleDate(Date.now(), type));
+    return type === "limit" ? `${d}부터 ${LIMIT_DAYS}거래일` : `${d} 이후 첫 ${ORDER_TYPE_LABEL[type]}`;
+  }
+
   function parseAmount() {
     const v = parseFloat($("amount").value.replace(/,/g, ""));
     return isFinite(v) ? v : 0;
@@ -991,6 +1072,14 @@
     btn.disabled = !p;
     const amt = parseAmount();
     $("schedRow").classList.toggle("hidden", !stockMode);
+    $("typeSeg").classList.toggle("hidden", !stockMode);
+    $("typeHelp").classList.toggle("hidden", !stockMode);
+    $("limitField").classList.toggle("hidden", !stockMode || orderType !== "limit");
+    for (const b of $("typeSeg").querySelectorAll("button")) b.classList.toggle("active", b.dataset.type === orderType);
+    $("typeHelp").textContent = typeHelpText(orderType);
+    const link = $("oLink");
+    link.classList.toggle("hidden", !stockMode);
+    if (stockMode) link.href = `https://finance.naver.com/item/main.naver?code=${stockCode(selected)}`;
 
     if (!stockMode) {
       const held = u.holdings[selected]?.qty || 0;
@@ -1014,8 +1103,26 @@
     }
 
     const avail = (u.holdings[selected]?.qty || 0) - pendingSellQty(u, selected);
-    $("sched").textContent = `${fmtYmdLong(orderEligibleDate(Date.now()))} 이후 첫 종가`;
-    if (side === "buy") {
+    const limit = parseNum("limitPrice");
+    $("sched").textContent = schedText(orderType);
+    if (orderType === "limit") {
+      const qty = Math.floor(amt);
+      $("amountLabel").textContent = "수량 (주)";
+      $("feeLabel").textContent = side === "buy" ? "수수료 (0.015%)" : "수수료+세금 (0.215%)";
+      if (side === "buy") {
+        $("availLabel").textContent = "주문 가능";
+        $("avail").textContent = fmtKRW(u.cash);
+        $("estLabel").textContent = "필요 금액 (최대)";
+        $("est").textContent = qty && limit ? fmtKRW(qty * limit * (1 + STOCK_FEE)) : "-";
+        $("fee").textContent = qty && limit ? fmtKRW(qty * limit * STOCK_FEE) : "-";
+      } else {
+        $("availLabel").textContent = "매도 가능";
+        $("avail").textContent = avail.toLocaleString("ko-KR") + "주";
+        $("estLabel").textContent = "예상 금액 (최소)";
+        $("est").textContent = qty && limit ? fmtKRW(qty * limit) : "-";
+        $("fee").textContent = qty && limit ? fmtKRW(qty * limit * (STOCK_FEE + STOCK_TAX)) : "-";
+      }
+    } else if (side === "buy") {
       const shares = p && amt ? Math.floor(amt / p.price) : 0;
       $("amountLabel").textContent = "주문 금액 (원)";
       $("availLabel").textContent = "주문 가능";
@@ -1040,14 +1147,14 @@
     const rows = Object.entries(u.holdings);
     let html = "";
     if (u.orders.length) {
-      html += `<div class="sub-title">체결 대기 주문 (종가 체결 예정)</div><div class="table-scroll"><table>
+      html += `<div class="sub-title">체결 대기 주문</div><div class="table-scroll"><table>
         <thead><tr><th>종목</th><th>구분</th><th>주문</th><th class="hide-sm">접수 시각</th><th>체결 기준</th><th></th></tr></thead>
         <tbody>${u.orders.map(o => `<tr>
           <td><div class="coin-name">${esc(o.name)}</div><div class="coin-sym">${sym(o.market)}</div></td>
-          <td class="${o.side === "buy" ? "side-buy" : "side-sell"}">${o.side === "buy" ? "매수" : "매도"}</td>
-          <td class="num">${o.side === "buy" ? fmtKRW(o.amount) : o.qty.toLocaleString("ko-KR") + "주"}</td>
+          <td class="${o.side === "buy" ? "side-buy" : "side-sell"}">${o.side === "buy" ? "매수" : "매도"}<span class="tag">${ORDER_TYPE_LABEL[o.type || "close"]}</span></td>
+          <td class="num">${o.type === "limit" ? `${fmtKRW(o.limit)} × ${o.qty.toLocaleString("ko-KR")}주` : o.side === "buy" ? fmtKRW(o.amount) : o.qty.toLocaleString("ko-KR") + "주"}</td>
           <td class="num muted hide-sm">${fmtTime(o.placedAt)}</td>
-          <td class="num">${fmtYmdLong(o.eligible)}~</td>
+          <td class="num">${fmtYmdLong(o.eligible)}${o.type === "limit" ? ` 부터 ${LIMIT_DAYS}거래일` : "~"}</td>
           <td><button class="btn btn-sm" data-cancel="${o.id}">취소</button></td>
         </tr>`).join("")}</tbody></table></div>`;
     }
@@ -1074,8 +1181,9 @@
 
   function tradeTags(t) {
     if (t.source === "sim") return '<span class="tag">시뮬</span>';
-    if (t.source === "sample") return `<span class="tag">예시 · ${fmtYmd(t.basDt)} 종가</span>`;
-    if (t.source === "close") return `<span class="tag">${fmtYmd(t.basDt)} 종가</span>`;
+    const kind = ORDER_TYPE_LABEL[t.orderType || "close"];
+    if (t.source === "sample") return `<span class="tag">예시 · ${fmtYmd(t.basDt)} ${kind}</span>`;
+    if (t.source === "close") return `<span class="tag">${fmtYmd(t.basDt)} ${kind}</span>`;
     return "";
   }
 
@@ -1088,7 +1196,7 @@
     $("tab-trades").innerHTML = `<div class="table-scroll"><table>
       <thead><tr><th>체결 시각</th><th>구분</th><th>종목</th><th>체결가</th><th class="hide-sm">수량</th><th>금액</th><th class="hide-sm">실현손익</th></tr></thead>
       <tbody>${u.trades.slice().reverse().map(t => {
-        const label = t.side === "buy" ? "매수" : t.side === "sell" ? "매도" : "미체결(환불)";
+        const label = t.side === "buy" ? "매수" : t.side === "sell" ? "매도" : (t.reason || "미체결(환불)");
         const sideCls = t.side === "buy" ? "side-buy" : t.side === "sell" ? "side-sell" : "muted";
         return `<tr>
         <td class="num muted">${fmtTime(t.at)}</td>
@@ -1163,6 +1271,7 @@
     if (!COIN_BY_MARKET[m] && !isStock(m)) return;
     selected = m;
     $("amount").value = "";
+    $("limitPrice").value = orderType === "limit" && prices[m] ? prices[m].price.toLocaleString("ko-KR") : "";
     setMsg("");
     renderMarkets();
     renderStocks();
@@ -1199,12 +1308,26 @@
   $("tabBuy").addEventListener("click", () => { side = "buy"; $("amount").value = ""; setMsg(""); renderOrder(); });
   $("tabSell").addEventListener("click", () => { side = "sell"; $("amount").value = ""; setMsg(""); renderOrder(); });
   $("amount").addEventListener("input", renderOrder);
+  $("limitPrice").addEventListener("input", renderOrder);
+  $("typeSeg").addEventListener("click", e => {
+    const t = e.target.dataset?.type;
+    if (!t) return;
+    orderType = t;
+    $("amount").value = "";
+    if (t === "limit" && prices[selected]) $("limitPrice").value = prices[selected].price.toLocaleString("ko-KR");
+    setMsg("");
+    renderOrder();
+  });
 
   $("pctBtns").addEventListener("click", e => {
     const p = parseFloat(e.target.dataset?.p);
     if (!p) return;
     const u = user();
-    if (side === "buy") {
+    if (isStock(selected) && orderType === "limit" && side === "buy") {
+      const limit = parseNum("limitPrice");
+      if (!limit) { setMsg("지정가를 먼저 입력해 주세요.", false); return; }
+      $("amount").value = String(Math.floor((u.cash * p) / (limit * (1 + STOCK_FEE))));
+    } else if (side === "buy") {
       const rate = isStock(selected) ? STOCK_FEE : COIN_FEE;
       $("amount").value = Math.floor((u.cash * p) / (1 + rate)).toLocaleString("ko-KR");
     } else if (isStock(selected)) {
@@ -1221,9 +1344,12 @@
     const u = user();
     const amt = parseAmount();
     if (isStock(selected)) {
-      const { err, order } = placeStockOrder(u, selected, side, amt);
+      const { err, order } = placeStockOrder(u, selected, side, orderType, amt, parseNum("limitPrice"));
       if (err) { setMsg(err, false); return; }
-      setMsg(`${order.name} ${side === "buy" ? fmtKRW(order.amount) + " 매수" : order.qty.toLocaleString("ko-KR") + "주 매도"} 예약 완료. ${fmtYmdLong(order.eligible)} 이후 첫 종가로 체결돼요.`, true);
+      const what = order.type === "limit"
+        ? `${fmtKRW(order.limit)}에 ${order.qty.toLocaleString("ko-KR")}주 ${side === "buy" ? "매수" : "매도"}`
+        : side === "buy" ? fmtKRW(order.amount) + " 매수" : order.qty.toLocaleString("ko-KR") + "주 매도";
+      setMsg(`${order.name} ${what} 예약 완료. 체결 기준: ${schedText(order.type)}.`, true);
     } else {
       const err = side === "buy" ? buyCoin(u, selected, amt) : sellCoin(u, selected, amt);
       if (err) { setMsg(err, false); return; }
