@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>입고수 모의투자</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
     --bg: #f5f6f8;
@@ -115,9 +116,11 @@
   }
   .input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
   .login .btn-primary { width: 100%; padding: 12px; border-radius: 10px; }
-  .existing { margin-top: 20px; }
-  .existing h3 { font-size: 13px; color: var(--muted); font-weight: 500; margin: 0 0 8px; }
-  .existing .list { display: flex; flex-wrap: wrap; gap: 8px; }
+  .auth-tabs { display: grid; grid-template-columns: 1fr 1fr; background: var(--surface-2); border-radius: 10px; padding: 4px; margin-bottom: 18px; }
+  .auth-tabs button { border: 0; background: transparent; padding: 8px; border-radius: 8px; cursor: pointer; font-weight: 600; color: var(--muted); }
+  .auth-tabs button.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .auth-msg { font-size: 13px; margin-top: 12px; min-height: 20px; }
+  .login .btn-primary:disabled { opacity: .6; cursor: wait; }
   .notice { margin-top: 20px; font-size: 12px; color: var(--muted); }
 
   /* Summary */
@@ -235,19 +238,28 @@
   <div class="login">
     <h1>입고수</h1>
     <p>입으로만 고수인지, 진짜 고수인지.<br>모의투자금 <b>1억 원</b>으로 증명해 보세요.</p>
-    <form id="loginForm">
-      <div class="field">
-        <label for="nickname">닉네임</label>
-        <input class="input" id="nickname" maxlength="12" placeholder="2~12자" autocomplete="off" required>
-      </div>
-      <button class="btn btn-primary" type="submit">시작하기</button>
-    </form>
-    <div class="existing hidden" id="existingWrap">
-      <h3>이 기기에 저장된 계정</h3>
-      <div class="list" id="existingList"></div>
+    <div class="auth-tabs" id="authTabs">
+      <button data-mode="login" class="active">로그인</button>
+      <button data-mode="signup">회원가입</button>
     </div>
+    <form id="authForm">
+      <div class="field hidden" id="nicknameField">
+        <label for="nickname">닉네임 (랭킹에 공개돼요)</label>
+        <input class="input" id="nickname" maxlength="12" placeholder="2~12자" autocomplete="nickname">
+      </div>
+      <div class="field">
+        <label for="email">이메일</label>
+        <input class="input" id="email" type="email" autocomplete="email" required>
+      </div>
+      <div class="field">
+        <label for="password">비밀번호</label>
+        <input class="input" id="password" type="password" minlength="6" placeholder="6자 이상" autocomplete="current-password" required>
+      </div>
+      <button class="btn btn-primary" type="submit" id="authSubmit">로그인</button>
+      <div class="auth-msg" id="authMsg"></div>
+    </form>
     <div class="notice">
-      시안 버전이라 계정과 거래 기록은 이 브라우저에만 저장돼요. 정식 버전에서는 소셜 로그인과 서버 저장으로 바뀝니다.
+      가입하면 모의투자금 1억 원이 지급돼요. 모든 거래는 서버에 기록되고 수정·삭제할 수 없어요.
       실제 돈은 오가지 않으며 투자 권유가 아닙니다.
     </div>
   </div>
@@ -255,8 +267,8 @@
 
 <!-- App -->
 <div class="wrap hidden" id="appView">
-  <div class="banner hidden" id="simBanner">
-    실시간 코인 시세(업비트)에 연결하지 못해 <b>시뮬레이션 시세</b>로 동작 중이에요. 이때 체결된 코인 거래는 "시뮬" 표시가 붙어요.
+  <div class="banner hidden" id="coinBanner">
+    브라우저에서 업비트 코인 시세를 불러오지 못했어요. 코인 주문은 서버가 실제 시세로 체결하니 그대로 이용할 수 있어요.
   </div>
 
   <section class="summary">
@@ -312,11 +324,6 @@
       </div>
 
       <div id="stockPane" class="stock-pane hidden">
-        <div class="banner hidden" id="stockSampleBanner">
-          종가 데이터 파일을 찾지 못해 <b>예시 종가</b>로 동작 중이에요. 표시된 가격은 실제 가격이 아니에요.
-          예시 모드에서는 아래 버튼으로 다음 거래일 종가를 만들어 체결 과정을 확인할 수 있어요.
-          <br><button class="btn btn-sm" id="nextSampleDay">다음 거래일 종가 만들기 (예시)</button>
-        </div>
         <div class="stock-tools">
           <input class="input" id="stockSearch" placeholder="종목명 또는 종목코드 검색 (예: 삼성전자, 005930)" autocomplete="off">
           <div class="stock-note" id="stockNote">국내주식은 공공데이터 일별 시세로 체결돼요. <b>종가·시가·지정가</b> 주문을 고를 수 있고, 체결 결과는 다음 영업일 오후에 반영돼요.</div>
@@ -385,9 +392,9 @@
   </section>
 
   <footer>
-    입고수 시안 · 모의투자 서비스이며 실제 투자 권유가 아닙니다.
-    코인 시세: 업비트 공개 API (연결 실패 시 시뮬레이션). 국내주식 시세: 공공데이터포털 금융위원회_주식시세정보 (일별 종가).
-    체결된 거래 기록은 수정·삭제할 수 없습니다.
+    입고수 · 모의투자 서비스이며 실제 투자 권유가 아닙니다.
+    코인 시세: 업비트 공개 API. 국내주식 시세: 공공데이터포털 금융위원회_주식시세정보 (일별 시세).
+    체결된 거래 기록은 서버에 저장되며 수정·삭제할 수 없습니다.
   </footer>
 </div>
 
@@ -395,496 +402,174 @@
 (() => {
   "use strict";
 
+  // Public project URL and publishable key: safe to ship in the page.
+  // All writes go through database functions that check the logged-in user.
+  const SUPABASE_URL = "https://vlytmxbrvtmiclkxnewi.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_isAKtgkx-1A6Xlsntz_0Rw_ZFhtUET4";
+
   const START_CASH = 100_000_000;
   const MIN_ORDER = 5_000;
   const POLL_MS = 3_000;
   const STOCK_REFRESH_MS = 10 * 60_000;
-  const SNAPSHOT_MS = 30_000;
-  const MAX_HISTORY = 600;
-  const STORE_KEY = "ipgosu.v1";
+  const DATA_REFRESH_MS = 60_000;
 
-  const COIN_FEE = 0.0005;     // 업비트 원화마켓 수수료
-  const STOCK_FEE = 0.00015;   // 증권사 매매 수수료 (가정)
-  const STOCK_TAX = 0.002;     // 매도 시 증권거래세 (가정)
-  const OPEN_CUTOFF_MIN = 9 * 60;         // 09:00 KST
-  const CLOSE_CUTOFF_MIN = 15 * 60 + 30;  // 15:30 KST
-  const LIMIT_DAYS = 5;                   // 지정가 주문 유효 거래일 수
-  const PRICE_LIMIT = 0.3;                // 지정가 허용 범위: 최근 종가 ±30%
-  const ORDER_TYPE_LABEL = { close: "종가", open: "시가", limit: "지정가" };
+  // Display-only copies of the server's rules (supabase/schema.sql is authoritative).
+  const COIN_FEE = 0.0005;
+  const STOCK_FEE = 0.00015;
+  const STOCK_TAX = 0.002;
+  const OPEN_CUTOFF_MIN = 9 * 60;
+  const CLOSE_CUTOFF_MIN = 15 * 60 + 30;
+  const LIMIT_DAYS = 5;
+  const ORDER_TYPE_LABEL = { close: "종가", open: "시가", limit: "지정가", market: "시장가" };
 
   const COINS = [
-    { market: "KRW-BTC", name: "비트코인", base: 140_000_000 },
-    { market: "KRW-ETH", name: "이더리움", base: 5_000_000 },
-    { market: "KRW-XRP", name: "리플", base: 3_500 },
-    { market: "KRW-SOL", name: "솔라나", base: 250_000 },
-    { market: "KRW-DOGE", name: "도지코인", base: 300 },
-    { market: "KRW-ADA", name: "에이다", base: 1_000 },
-    { market: "KRW-AVAX", name: "아발란체", base: 35_000 },
-    { market: "KRW-LINK", name: "체인링크", base: 25_000 },
-    { market: "KRW-DOT", name: "폴카닷", base: 6_000 },
-    { market: "KRW-TRX", name: "트론", base: 450 },
+    { market: "KRW-BTC", name: "비트코인" }, { market: "KRW-ETH", name: "이더리움" },
+    { market: "KRW-XRP", name: "리플" }, { market: "KRW-SOL", name: "솔라나" },
+    { market: "KRW-DOGE", name: "도지코인" }, { market: "KRW-ADA", name: "에이다" },
+    { market: "KRW-AVAX", name: "아발란체" }, { market: "KRW-LINK", name: "체인링크" },
+    { market: "KRW-DOT", name: "폴카닷" }, { market: "KRW-TRX", name: "트론" },
   ];
   const COIN_BY_MARKET = Object.fromEntries(COINS.map(c => [c.market, c]));
 
-  // Used only when no closing-price file is available. Prices are not real.
-  const SAMPLE_STOCKS = [
-    ["005930", "삼성전자", "P", 70_000], ["000660", "SK하이닉스", "P", 200_000],
-    ["373220", "LG에너지솔루션", "P", 350_000], ["207940", "삼성바이오로직스", "P", 900_000],
-    ["005380", "현대차", "P", 220_000], ["035420", "NAVER", "P", 200_000],
-    ["035720", "카카오", "P", 40_000], ["068270", "셀트리온", "P", 180_000],
-    ["105560", "KB금융", "P", 90_000], ["247540", "에코프로비엠", "Q", 120_000],
-    ["086520", "에코프로", "Q", 80_000], ["196170", "알테오젠", "Q", 350_000],
-  ];
+  const $ = id => document.getElementById(id);
+  const sb = window.supabase?.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-  // ---------- Storage ----------
-  function load() {
-    try {
-      const raw = localStorage.getItem(STORE_KEY);
-      if (raw) return JSON.parse(raw);
-    } catch (e) { /* storage unavailable */ }
-    return { users: {}, current: null };
-  }
-  function save() {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); } catch (e) { /* ignore */ }
-  }
-  const db = load();
-  for (const u of Object.values(db.users)) u.orders ||= [];
+  // ---------- Server state (read-only mirror of the database) ----------
+  const me = { id: null, nickname: "", cash: 0, holdings: [], orders: [], trades: [], snapshots: [] };
+  let rankings = [];
+  let loaded = false;
 
-  function newUser(name, demo = false) {
-    return { name, demo, createdAt: Date.now(), cash: START_CASH, holdings: {}, trades: [], orders: [], history: [] };
+  async function loadMine() {
+    const [acc, prof, hold, ord, trd, snap] = await Promise.all([
+      sb.from("accounts").select("cash").eq("user_id", me.id).maybeSingle(),
+      sb.from("profiles").select("nickname").eq("id", me.id).maybeSingle(),
+      sb.from("holdings").select("*").eq("user_id", me.id),
+      sb.from("orders").select("*").eq("user_id", me.id).eq("status", "pending").order("placed_at", { ascending: true }),
+      sb.from("trades").select("*").eq("user_id", me.id).order("id", { ascending: false }).limit(200),
+      sb.from("snapshots").select("t,value").eq("user_id", me.id).order("t", { ascending: false }).limit(1000),
+    ]);
+    const err = [acc, prof, hold, ord, trd, snap].find(r => r.error)?.error;
+    if (err) throw err;
+    me.cash = Number(acc.data?.cash ?? 0);
+    me.nickname = prof.data?.nickname || "";
+    me.holdings = hold.data.map(h => ({ ...h, qty: Number(h.qty), cost: Number(h.cost) }));
+    me.orders = ord.data.map(o => ({ ...o, reserved: Number(o.reserved), qty: o.qty == null ? null : Number(o.qty),
+      amount: o.amount == null ? null : Number(o.amount), limit_price: o.limit_price == null ? null : Number(o.limit_price) }));
+    me.trades = trd.data.map(t => ({ ...t, price: Number(t.price), qty: Number(t.qty), amount: Number(t.amount),
+      fee: Number(t.fee), pnl: t.pnl == null ? null : Number(t.pnl) }));
+    me.snapshots = snap.data.map(s => ({ t: Date.parse(s.t), v: Number(s.value) })).reverse();
+    loaded = true;
+  }
+
+  async function loadRankings() {
+    const { data, error } = await sb.from("rankings").select("*").order("ret", { ascending: false }).limit(100);
+    if (!error) rankings = data.map(r => ({ ...r, total: Number(r.total), ret: Number(r.ret), mdd: Number(r.mdd),
+      win_rate: r.win_rate == null ? null : Number(r.win_rate) }));
+  }
+
+  async function refreshMine() {
+    try { await loadMine(); } catch (e) { console.error(e); }
+    if (me.id) renderAll();
   }
 
   // ---------- Asset helpers ----------
   const isStock = m => m.startsWith("KRX:");
   const stockCode = m => m.slice(4);
   const sym = m => isStock(m) ? stockCode(m) : m.replace("KRW-", "");
-  const stockMeta = {}; // code -> { name, market }
+  const stockMeta = {};
   function assetName(m, fallback) {
     if (isStock(m)) return stockMeta[stockCode(m)]?.name || fallback || stockCode(m);
-    return COIN_BY_MARKET[m]?.name || m;
+    return COIN_BY_MARKET[m]?.name || fallback || m;
   }
+  const holdingOf = m => me.holdings.find(h => h.market === m);
   const fmtQtyFor = (m, q) => isStock(m) ? Math.round(q).toLocaleString("ko-KR") + "주" : fmtQty(q) + " " + sym(m);
 
-  // ---------- Coin prices ----------
-  const prices = {};   // market -> { price, change, volume }
-  let source = null;   // coin price source: "live" | "sim"
-  let liveFailures = 0;
+  // ---------- Coin prices (display only; the server fetches its own price for fills) ----------
+  const prices = {};
+  let coinLive = null;
 
-  async function fetchLive() {
+  async function refreshCoinPrices() {
     const url = "https://api.upbit.com/v1/ticker?markets=" + COINS.map(c => c.market).join(",");
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 4000);
     try {
       const res = await fetch(url, { signal: ctrl.signal });
       if (!res.ok) throw new Error("HTTP " + res.status);
-      const data = await res.json();
-      for (const t of data) {
+      for (const t of await res.json()) {
         prices[t.market] = { price: t.trade_price, change: t.signed_change_rate, volume: t.acc_trade_price_24h };
       }
-      return true;
+      coinLive = true;
+    } catch (e) {
+      coinLive = false;
     } finally {
       clearTimeout(timer);
     }
   }
 
-  function stepSim() {
-    for (const c of COINS) {
-      const p = prices[c.market];
-      if (!p) {
-        prices[c.market] = { price: c.base, open: c.base, change: 0, volume: c.base * 4e5 * (1 + Math.random()) };
-        continue;
-      }
-      const open = p.open ?? p.price;
-      const shock = (Math.random() - 0.5) * 0.006;
-      const next = Math.max(p.price * (1 + shock), 0.0001);
-      prices[c.market] = { price: roundPrice(next), open, change: next / open - 1, volume: p.volume * (1 + Math.random() * 0.002) };
-    }
-  }
-
-  async function refreshPrices() {
-    if (liveFailures < 2) {
-      try {
-        await fetchLive();
-        liveFailures = 0;
-        source = "live";
-        return;
-      } catch (e) {
-        liveFailures++;
-        if (liveFailures < 2 && COINS.some(c => prices[c.market])) return;
-      }
-    }
-    source = "sim";
-    stepSim();
-  }
-
-  function roundPrice(p) {
-    if (p >= 1000) return Math.round(p);
-    if (p >= 100) return Math.round(p * 10) / 10;
-    if (p >= 1) return Math.round(p * 100) / 100;
-    return Math.round(p * 10000) / 10000;
-  }
-
-  // ---------- Stock closing prices ----------
-  // mode "real": data/stocks/*.json written by the GitHub Action from 공공데이터포털.
-  // mode "sample": no data file reachable, so example closes are generated locally.
-  const stock = { mode: null, dates: [], days: {}, latest: null };
+  // ---------- Stock prices (data/stocks/*.json from the GitHub Action) ----------
+  const stock = { ready: false, dates: [], latest: null, rows: [] };
 
   const ymdUTC = d => d.toISOString().slice(0, 10).replace(/-/g, "");
   function kstNow(ts = Date.now()) {
     const d = new Date(ts + 9 * 3600_000);
     return { date: ymdUTC(d), minutes: d.getUTCHours() * 60 + d.getUTCMinutes() };
   }
-  function addDays(ymd, n) {
-    const d = new Date(Date.UTC(+ymd.slice(0, 4), +ymd.slice(4, 6) - 1, +ymd.slice(6, 8) + n));
-    return ymdUTC(d);
-  }
+  const toDate = ymd => new Date(Date.UTC(+ymd.slice(0, 4), +ymd.slice(4, 6) - 1, +ymd.slice(6, 8)));
+  const addDays = (ymd, n) => { const d = toDate(ymd); d.setUTCDate(d.getUTCDate() + n); return ymdUTC(d); };
   function nextWeekday(ymd) {
     let d = addDays(ymd, 1);
-    while ([0, 6].includes(new Date(Date.UTC(+d.slice(0, 4), +d.slice(4, 6) - 1, +d.slice(6, 8))).getUTCDay())) d = addDays(d, 1);
+    while ([0, 6].includes(toDate(d).getUTCDay())) d = addDays(d, 1);
     return d;
   }
-  // First trading date whose prices can fill an order placed at ts:
-  //   close: before 15:30 → that day's close, otherwise the next day's.
-  //   open:  before 09:00 → that day's open, otherwise the next day's.
-  //   limit: always from the next day, since part of today's range may already be known.
-  function eligibleDate(ts, type) {
-    const { date, minutes } = kstNow(ts);
-    if (type === "limit") return addDays(date, 1);
-    const cutoff = type === "open" ? OPEN_CUTOFF_MIN : CLOSE_CUTOFF_MIN;
-    return minutes < cutoff ? date : addDays(date, 1);
+  // Mirrors order_eligible_date() in the database, for showing when an order will fill.
+  function orderEligibleDate(type) {
+    const { date, minutes } = kstNow();
+    let e = type === "limit" ? addDays(date, 1)
+      : minutes < (type === "open" ? OPEN_CUTOFF_MIN : CLOSE_CUTOFF_MIN) ? date : addDays(date, 1);
+    if (stock.latest) { const n = nextWeekday(stock.latest); if (n > e) e = n; }
+    return e;
   }
-  // Never fill at prices that were already published when the order was placed.
-  function orderEligibleDate(ts, type) {
-    const e = eligibleDate(ts, type);
-    const afterLatest = stock.latest ? nextWeekday(stock.latest) : e;
-    return afterLatest > e ? afterLatest : e;
-  }
+  const isoToYmd = s => s.replace(/-/g, "").slice(0, 8);
   const fmtYmd = ymd => `${+ymd.slice(4, 6)}/${+ymd.slice(6, 8)}`;
-  const fmtYmdLong = ymd => {
-    const d = new Date(Date.UTC(+ymd.slice(0, 4), +ymd.slice(4, 6) - 1, +ymd.slice(6, 8)));
-    return `${+ymd.slice(4, 6)}/${+ymd.slice(6, 8)}(${"일월화수목금토"[d.getUTCDay()]})`;
-  };
-
-  function indexDay(date, rows) {
-    const byCode = {};
-    for (const r of rows) {
-      byCode[r[0]] = {
-        code: r[0], name: r[1], market: r[2], close: r[3], pct: r[4], value: r[5],
-        open: r[6] ?? r[3], high: r[7] ?? r[3], low: r[8] ?? r[3],
-      };
-    }
-    stock.days[date] = { rows, byCode };
-  }
-
-  async function loadDay(date) {
-    if (stock.days[date]) return stock.days[date];
-    if (stock.mode !== "real") return null;
-    try {
-      const res = await fetch(`data/stocks/${date}.json`, { cache: "no-store" });
-      if (!res.ok) return null;
-      const file = await res.json();
-      indexDay(date, file.rows);
-      return stock.days[date];
-    } catch (e) { return null; }
-  }
-
-  function ensureSampleDays() {
-    db.sample ||= { days: [] };
-    if (!db.sample.days.length) {
-      // Start from the last weekday before today so today's orders wait for the next close.
-      let d = addDays(kstNow().date, -1);
-      while ([0, 6].includes(new Date(Date.UTC(+d.slice(0, 4), +d.slice(4, 6) - 1, +d.slice(6, 8))).getUTCDay())) d = addDays(d, -1);
-      db.sample.days.push({ date: d, rows: SAMPLE_STOCKS.map(([c, n, m, p], i) => [c, n, m, p, 0, (SAMPLE_STOCKS.length - i) * 1e11]) });
-      save();
-    }
-    for (const day of db.sample.days) indexDay(day.date, day.rows);
-    stock.dates = db.sample.days.map(d => d.date);
-  }
-
-  function addSampleDay() {
-    const prev = db.sample.days[db.sample.days.length - 1];
-    const rows = prev.rows.map(([c, n, m, p, , v]) => {
-      const pct = Math.round((Math.random() - 0.5) * 600) / 100; // ±3%
-      const close = Math.max(Math.round(p * (1 + pct / 100)), 1);
-      const open = Math.max(Math.round(p * (1 + (Math.random() - 0.5) * 0.02)), 1);
-      const high = Math.round(Math.max(open, close) * (1 + Math.random() * 0.015));
-      const low = Math.max(Math.round(Math.min(open, close) * (1 - Math.random() * 0.015)), 1);
-      return [c, n, m, close, pct, Math.round(v * (0.7 + Math.random() * 0.6)), open, high, low];
-    });
-    db.sample.days.push({ date: nextWeekday(prev.date), rows });
-    if (db.sample.days.length > 30) db.sample.days.shift();
-    save();
-    ensureSampleDays();
-  }
-
-  function applyLatestStockPrices() {
-    stock.latest = stock.dates[stock.dates.length - 1] || null;
-    for (const key of Object.keys(prices)) if (isStock(key)) delete prices[key];
-    const day = stock.days[stock.latest];
-    if (!day) return;
-    for (const r of Object.values(day.byCode)) {
-      prices["KRX:" + r.code] = { price: r.close, change: r.pct / 100, volume: r.value };
-      stockMeta[r.code] = { name: r.name, market: r.market };
-    }
-  }
+  const fmtYmdLong = ymd => `${fmtYmd(ymd)}(${"일월화수목금토"[toDate(ymd).getUTCDay()]})`;
 
   async function refreshStocks() {
-    let index = null;
     try {
       const res = await fetch("data/stocks/latest.json", { cache: "no-store" });
-      if (res.ok) index = await res.json();
-    } catch (e) { /* fall back to sample */ }
-
-    if (index?.dates?.length) {
-      stock.mode = "real";
-      stock.dates = index.dates.slice().sort();
-      await loadDay(stock.dates[stock.dates.length - 1]);
-    } else if (stock.mode !== "real") {
-      stock.mode = "sample";
-      ensureSampleDays();
+      if (!res.ok) throw new Error("no index");
+      const index = await res.json();
+      if (!index.latest) throw new Error("empty");
+      if (index.latest !== stock.latest) {
+        const day = await (await fetch(`data/stocks/${index.latest}.json`, { cache: "no-store" })).json();
+        stock.rows = day.rows;
+        stock.latest = index.latest;
+        for (const key of Object.keys(prices)) if (isStock(key)) delete prices[key];
+        for (const [code, name, market, close, pct, value] of day.rows) {
+          prices["KRX:" + code] = { price: close, change: pct / 100, volume: value };
+          stockMeta[code] = { name, market };
+        }
+      }
+      stock.ready = true;
+    } catch (e) {
+      stock.ready = false;
     }
-    applyLatestStockPrices();
-    await settleAllOrders();
   }
 
-  // ---------- Portfolio math ----------
-  function holdingsValue(u) {
-    let v = 0;
-    for (const [m, h] of Object.entries(u.holdings)) {
-      const p = prices[m]?.price ?? h.lastPrice;
-      if (p) v += h.qty * p;
-    }
-    return v;
-  }
-  const reservedCash = u => u.orders.reduce((s, o) => s + (o.side === "buy" ? o.reserved : 0), 0);
-  const pendingSellQty = (u, m) => u.orders.reduce((s, o) => s + (o.side === "sell" && o.market === m ? o.qty : 0), 0);
-  function totalValue(u) { return u.cash + reservedCash(u) + holdingsValue(u); }
-  function totalCost(u) { return Object.values(u.holdings).reduce((s, h) => s + h.cost, 0); }
+  // ---------- Portfolio math (display) ----------
+  function priceOf(h) { return prices[h.market]?.price ?? h.cost / h.qty; }
+  const holdingsValue = () => me.holdings.reduce((s, h) => s + h.qty * priceOf(h), 0);
+  const reservedCash = () => me.orders.reduce((s, o) => s + (o.side === "buy" ? o.reserved : 0), 0);
+  const totalValue = () => me.cash + reservedCash() + holdingsValue();
+  const totalCost = () => me.holdings.reduce((s, h) => s + h.cost, 0);
+  const pendingSellQty = m => me.orders.reduce((s, o) => s + (o.side === "sell" && o.market === m ? o.qty : 0), 0);
 
-  function maxDrawdown(history) {
+  function maxDrawdown(points) {
     let peak = -Infinity, mdd = 0;
-    for (const { v } of history) {
+    for (const { v } of points) {
       if (v > peak) peak = v;
       if (peak > 0) mdd = Math.min(mdd, v / peak - 1);
     }
     return mdd;
-  }
-
-  function snapshot(u, force = false) {
-    const last = u.history[u.history.length - 1];
-    const now = Date.now();
-    if (!force && last && now - last.t < SNAPSHOT_MS) return;
-    u.history.push({ t: now, v: Math.round(totalValue(u)) });
-    if (u.history.length > MAX_HISTORY) u.history.splice(0, u.history.length - MAX_HISTORY);
-  }
-
-  // ---------- Coin orders (filled immediately at the live price) ----------
-  function buyCoin(u, market, krw) {
-    const price = prices[market]?.price;
-    if (!price) return "시세를 불러오는 중이에요.";
-    if (!(krw >= MIN_ORDER)) return `최소 주문 금액은 ${fmtKRW(MIN_ORDER)}이에요.`;
-    const fee = krw * COIN_FEE;
-    if (krw + fee > u.cash + 1e-6) return "주문 가능 현금이 부족해요.";
-    const qty = krw / price;
-    const h = u.holdings[market] || { qty: 0, cost: 0 };
-    h.qty += qty;
-    h.cost += krw + fee;
-    u.holdings[market] = h;
-    u.cash -= krw + fee;
-    record(u, { side: "buy", market, price, qty, amount: krw, fee, source });
-    return null;
-  }
-
-  function sellCoin(u, market, qty) {
-    const price = prices[market]?.price;
-    const h = u.holdings[market];
-    if (!price) return "시세를 불러오는 중이에요.";
-    if (!h || h.qty <= 0) return "보유한 수량이 없어요.";
-    if (!(qty > 0)) return "매도 수량을 입력해 주세요.";
-    if (qty > h.qty * (1 + 1e-9)) return "보유 수량보다 많이 팔 수 없어요.";
-    qty = Math.min(qty, h.qty);
-    const amount = qty * price;
-    if (amount < MIN_ORDER && qty < h.qty) return `최소 주문 금액은 ${fmtKRW(MIN_ORDER)}이에요.`;
-    const fee = amount * COIN_FEE;
-    const costPart = h.cost * (qty / h.qty);
-    const pnl = amount - fee - costPart;
-    h.qty -= qty;
-    h.cost -= costPart;
-    if (h.qty <= 1e-12) delete u.holdings[market];
-    u.cash += amount - fee;
-    record(u, { side: "sell", market, price, qty, amount, fee, pnl, source });
-    return null;
-  }
-
-  // ---------- Stock orders (reserved now, filled from a later day's prices) ----------
-  // type "close" | "open": buy by amount (converted to whole shares at fill), sell by shares.
-  // type "limit": buy/sell whole shares at the limit price or better, valid for LIMIT_DAYS trading days.
-  function placeStockOrder(u, market, side, type, value, limit) {
-    const last = prices[market]?.price;
-    if (!last) return { err: "종가 데이터를 불러오는 중이에요." };
-    const now = Date.now();
-    const order = {
-      id: now.toString(36) + Math.random().toString(36).slice(2, 6),
-      side, type, market, name: assetName(market), placedAt: now, eligible: orderEligibleDate(now, type),
-    };
-    const avail = (u.holdings[market]?.qty || 0) - pendingSellQty(u, market);
-
-    if (type === "limit") {
-      limit = Math.round(limit);
-      if (!(limit > 0)) return { err: "지정가를 입력해 주세요." };
-      if (Math.abs(limit / last - 1) > PRICE_LIMIT) {
-        return { err: `지정가는 최근 종가의 ±30% (${fmtKRW(Math.ceil(last * (1 - PRICE_LIMIT)))} ~ ${fmtKRW(Math.floor(last * (1 + PRICE_LIMIT)))}) 안에서 입력해 주세요.` };
-      }
-      const qty = Math.floor(value);
-      if (!(qty >= 1)) return { err: "수량을 1주 이상 입력해 주세요." };
-      if (side === "buy") {
-        const reserved = qty * limit * (1 + STOCK_FEE);
-        if (reserved > u.cash + 1e-6) return { err: "주문 가능 현금이 부족해요." };
-        u.cash -= reserved;
-        Object.assign(order, { qty, limit, reserved });
-      } else {
-        if (qty > avail) return { err: `매도 가능 수량은 ${avail.toLocaleString("ko-KR")}주예요.` };
-        Object.assign(order, { qty, limit });
-      }
-    } else if (side === "buy") {
-      if (!(value >= last)) return { err: `최소 1주 이상 살 수 있는 금액을 입력해 주세요. (최근 종가 ${fmtKRW(last)})` };
-      const reserved = value * (1 + STOCK_FEE);
-      if (reserved > u.cash + 1e-6) return { err: "주문 가능 현금이 부족해요." };
-      u.cash -= reserved;
-      Object.assign(order, { amount: value, reserved });
-    } else {
-      const qty = Math.floor(value);
-      if (!(qty >= 1)) return { err: "매도 수량을 1주 이상 입력해 주세요." };
-      if (qty > avail) return { err: `매도 가능 수량은 ${avail.toLocaleString("ko-KR")}주예요.` };
-      order.qty = qty;
-    }
-    u.orders.push(order);
-    save();
-    return { order };
-  }
-
-  function cancelOrder(u, id) {
-    const i = u.orders.findIndex(o => o.id === id);
-    if (i < 0) return;
-    const [o] = u.orders.splice(i, 1);
-    if (o.side === "buy") u.cash += o.reserved;
-    save();
-  }
-
-  // Walks trading days from the order's eligible date and decides its outcome:
-  // { date, price } when filled, { date, expired: true } when a limit order runs out, or null to keep waiting.
-  async function findFill(o) {
-    const type = o.type || "close";
-    let tradingDays = 0;
-    for (const date of stock.dates) {
-      if (date < o.eligible) continue;
-      const day = await loadDay(date);
-      const row = day?.byCode[stockCode(o.market)];
-      if (!row) continue;
-      if (type === "close") return { date, price: row.close };
-      if (type === "open") return { date, price: row.open };
-      // Limit: a gap past the limit fills at the better opening price.
-      if (o.side === "buy" && row.low <= o.limit) return { date, price: Math.min(o.limit, row.open) };
-      if (o.side === "sell" && row.high >= o.limit) return { date, price: Math.max(o.limit, row.open) };
-      if (++tradingDays >= LIMIT_DAYS) return { date, expired: true };
-    }
-    return null;
-  }
-
-  async function settleOrders(u) {
-    let changed = false;
-    for (const o of u.orders.slice()) {
-      const fill = await findFill(o);
-      if (!fill) continue;
-      u.orders.splice(u.orders.indexOf(o), 1);
-      changed = true;
-      const { date, price } = fill;
-      const type = o.type || "close";
-      const base = { market: o.market, name: o.name, orderType: type, limit: o.limit, basDt: date, placedAt: o.placedAt, source: stock.mode === "sample" ? "sample" : "close" };
-
-      if (fill.expired) {
-        if (o.side === "buy") u.cash += o.reserved;
-        record(u, { ...base, side: "void", reason: "기간 만료", price: o.limit, qty: 0, amount: 0, fee: 0 });
-        continue;
-      }
-      if (o.side === "buy") {
-        const qty = type === "limit" ? o.qty : Math.floor(o.amount / price);
-        if (qty < 1) {
-          u.cash += o.reserved;
-          record(u, { ...base, side: "void", reason: "미체결(환불)", price, qty: 0, amount: 0, fee: 0 });
-          continue;
-        }
-        const amount = qty * price;
-        const fee = amount * STOCK_FEE;
-        const h = u.holdings[o.market] || { qty: 0, cost: 0 };
-        h.qty += qty;
-        h.cost += amount + fee;
-        h.name = o.name;
-        h.lastPrice = price;
-        u.holdings[o.market] = h;
-        u.cash += o.reserved - amount - fee;
-        record(u, { ...base, side: "buy", price, qty, amount, fee });
-      } else {
-        const h = u.holdings[o.market];
-        const qty = Math.min(o.qty, h?.qty || 0);
-        if (qty < 1) continue;
-        const amount = qty * price;
-        const fee = amount * STOCK_FEE;
-        const tax = amount * STOCK_TAX;
-        const costPart = h.cost * (qty / h.qty);
-        h.qty -= qty;
-        h.cost -= costPart;
-        h.lastPrice = price;
-        if (h.qty < 1) delete u.holdings[o.market];
-        u.cash += amount - fee - tax;
-        record(u, { ...base, side: "sell", price, qty, amount, fee: fee + tax, pnl: amount - fee - tax - costPart });
-      }
-    }
-    return changed;
-  }
-
-  let settling = false;
-  async function settleAllOrders() {
-    if (settling || !stock.dates.length) return false;
-    settling = true;
-    let changed = false;
-    try {
-      for (const u of Object.values(db.users)) changed = (await settleOrders(u)) || changed;
-    } finally {
-      settling = false;
-    }
-    if (changed) save();
-    return changed;
-  }
-
-  function record(u, t) {
-    // Append-only: trades are never edited or removed.
-    u.trades.push(Object.freeze({ ...t, at: Date.now() }));
-    snapshot(u, true);
-    save();
-  }
-
-  // ---------- Demo accounts for ranking ----------
-  function ensureDemoAccounts() {
-    if (db.users["말로만고수"] || !COINS.every(c => prices[c.market])) return;
-    const allIn = newUser("말로만고수", true);
-    const doge = prices["KRW-DOGE"].price;
-    allIn.cash = 0;
-    allIn.holdings["KRW-DOGE"] = { qty: START_CASH / (doge * 1.35), cost: START_CASH };
-    allIn.trades.push({ side: "buy", market: "KRW-DOGE", price: doge * 1.35, qty: START_CASH / (doge * 1.35), amount: START_CASH, fee: 0, at: Date.now(), source: "demo" });
-
-    const steady = newUser("꾸준이", true);
-    const mix = [["KRW-BTC", 0.4, 0.97], ["KRW-ETH", 0.2, 0.99]];
-    for (const [m, w, f] of mix) {
-      const p = prices[m].price * f;
-      const amt = START_CASH * w;
-      steady.holdings[m] = { qty: amt / p, cost: amt };
-      steady.cash -= amt;
-      steady.trades.push({ side: "buy", market: m, price: p, qty: amt / p, amount: amt, fee: 0, at: Date.now(), source: "demo" });
-    }
-    db.users[allIn.name] = allIn;
-    db.users[steady.name] = steady;
-    save();
   }
 
   // ---------- Formatting ----------
@@ -896,84 +581,136 @@
   const fmtQty = q => q.toLocaleString("ko-KR", { maximumFractionDigits: q >= 1 ? 4 : 8 });
   const fmtBig = n => n >= 1e12 ? (n / 1e12).toFixed(1) + "조" : n >= 1e8 ? Math.round(n / 1e8).toLocaleString("ko-KR") + "억" : Math.round(n / 1e4).toLocaleString("ko-KR") + "만";
   const cls = r => r > 0 ? "up" : r < 0 ? "down" : "";
-  const esc = s => String(s).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
-  const fmtTime = t => new Date(t).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+  const fmtTime = t => new Date(t).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
-  // ---------- UI ----------
-  const $ = id => document.getElementById(id);
+  // ---------- Auth ----------
+  let authMode = "login";
+
+  function setAuthMsg(text, ok) {
+    $("authMsg").textContent = text || "";
+    $("authMsg").style.color = ok ? "var(--accent)" : "var(--up)";
+  }
+
+  function authErrorText(error) {
+    const m = error?.message || String(error);
+    if (/Invalid login credentials/i.test(m)) return "이메일 또는 비밀번호가 맞지 않아요.";
+    if (/already registered|already been registered/i.test(m)) return "이미 가입된 이메일이에요. 로그인해 주세요.";
+    if (/Password should be at least/i.test(m)) return "비밀번호는 6자 이상이어야 해요.";
+    if (/Email not confirmed/i.test(m)) return "이메일 인증을 먼저 완료해 주세요. 받은 메일함을 확인해 주세요.";
+    if (/Database error saving new user/i.test(m)) return "이미 사용 중인 닉네임이에요. 다른 닉네임을 입력해 주세요.";
+    if (/rate limit/i.test(m)) return "요청이 너무 많아요. 잠시 후 다시 시도해 주세요.";
+    if (/valid email|invalid format/i.test(m)) return "이메일 주소 형식을 확인해 주세요.";
+    return m;
+  }
+
+  function setAuthMode(mode) {
+    authMode = mode;
+    for (const b of $("authTabs").querySelectorAll("button")) b.classList.toggle("active", b.dataset.mode === mode);
+    $("nicknameField").classList.toggle("hidden", mode !== "signup");
+    $("authSubmit").textContent = mode === "signup" ? "가입하고 1억 받기" : "로그인";
+    $("password").autocomplete = mode === "signup" ? "new-password" : "current-password";
+    setAuthMsg("");
+  }
+
+  async function submitAuth(e) {
+    e.preventDefault();
+    if (!sb) { setAuthMsg("서버에 연결할 수 없어요. 인터넷 연결을 확인하고 새로고침해 주세요."); return; }
+    const email = $("email").value.trim();
+    const password = $("password").value;
+    const btn = $("authSubmit");
+    btn.disabled = true;
+    try {
+      if (authMode === "signup") {
+        const nickname = $("nickname").value.trim();
+        if (nickname.length < 2 || nickname.length > 12) { setAuthMsg("닉네임은 2~12자로 입력해 주세요."); return; }
+        const { data: available, error: nickErr } = await sb.rpc("nickname_available", { p_nickname: nickname });
+        if (nickErr) throw nickErr;
+        if (!available) { setAuthMsg("이미 사용 중인 닉네임이에요. 다른 닉네임을 입력해 주세요."); return; }
+        const { data, error } = await sb.auth.signUp({ email, password, options: { data: { nickname } } });
+        if (error) throw error;
+        if (!data.session) {
+          setAuthMsg("가입 확인 메일을 보냈어요. 메일의 링크를 누른 뒤 로그인해 주세요.", true);
+          setAuthMode("login");
+          setAuthMsg("가입 확인 메일을 보냈어요. 메일의 링크를 누른 뒤 로그인해 주세요.", true);
+        }
+      } else {
+        const { error } = await sb.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+      }
+    } catch (err) {
+      setAuthMsg(authErrorText(err));
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function onSession(session) {
+    if (!session) {
+      me.id = null;
+      loaded = false;
+      $("loginView").classList.remove("hidden");
+      $("appView").classList.add("hidden");
+      $("userChip").classList.add("hidden");
+      return;
+    }
+    if (me.id === session.user.id) return; // getSession and INITIAL_SESSION both report the same session
+    me.id = session.user.id;
+    $("loginView").classList.add("hidden");
+    $("appView").classList.remove("hidden");
+    $("userChip").classList.remove("hidden");
+    $("userName").textContent = "";
+    try {
+      await Promise.all([loadMine(), loadRankings()]);
+    } catch (err) {
+      console.error(err);
+      $("userName").textContent = "불러오기 실패";
+    }
+    $("userName").textContent = (me.nickname || session.user.email) + " 님";
+    renderAll();
+  }
+
+  // ---------- UI state ----------
   let selected = COINS[0].market;
   let side = "buy";
   let activeTab = "holdings";
   let assetTab = "coin";
   let orderType = "close";
-  const user = () => db.users[db.current];
-
-  function showLogin() {
-    $("loginView").classList.remove("hidden");
-    $("appView").classList.add("hidden");
-    $("userChip").classList.add("hidden");
-    const names = Object.values(db.users).filter(u => !u.demo).map(u => u.name);
-    $("existingWrap").classList.toggle("hidden", !names.length);
-    $("existingList").innerHTML = names.map(n => `<button class="btn" data-name="${esc(n)}">${esc(n)}</button>`).join("");
-  }
-
-  function showApp() {
-    $("loginView").classList.add("hidden");
-    $("appView").classList.remove("hidden");
-    $("userChip").classList.remove("hidden");
-    $("userName").textContent = db.current + " 님";
-    renderAll();
-  }
-
-  function login(name) {
-    name = name.trim();
-    if (name.length < 2) { alert("닉네임은 2자 이상이어야 해요."); return; }
-    const existing = db.users[name];
-    if (existing?.demo) { alert("예시 계정 이름이에요. 다른 닉네임을 써 주세요."); return; }
-    if (!existing) db.users[name] = newUser(name);
-    db.current = name;
-    save();
-    showApp();
-  }
+  let busy = false;
 
   function renderSummary() {
-    const u = user();
-    const total = totalValue(u);
+    const total = totalValue();
     const ret = total / START_CASH - 1;
-    const evalV = holdingsValue(u);
-    const cost = totalCost(u);
-    const evalPnl = evalV - cost;
-    const reserved = reservedCash(u);
+    const evalV = holdingsValue();
+    const cost = totalCost();
+    const reserved = reservedCash();
     $("sumTotal").textContent = fmtKRW(total);
     $("sumTotalSub").innerHTML = `<span class="${cls(ret)}">${(total - START_CASH >= 0 ? "+" : "") + fmtKRW(total - START_CASH)}</span>`;
     $("sumReturn").innerHTML = `<span class="${cls(ret)}">${fmtPct(ret)}</span>`;
-    $("sumCash").textContent = fmtKRW(u.cash);
-    $("sumCashSub").textContent = reserved ? `체결 대기 ${fmtKRW(reserved)} 별도` : `자산의 ${total ? ((u.cash / total) * 100).toFixed(1) : 0}%`;
+    $("sumCash").textContent = fmtKRW(me.cash);
+    $("sumCashSub").textContent = reserved ? `체결 대기 ${fmtKRW(reserved)} 별도` : `자산의 ${total ? ((me.cash / total) * 100).toFixed(1) : 0}%`;
     $("sumEval").textContent = fmtKRW(evalV);
-    $("sumEvalSub").innerHTML = cost ? `<span class="${cls(evalPnl)}">평가손익 ${fmtPct(evalPnl / cost)}</span>` : `<span class="muted">보유 자산 없음</span>`;
+    $("sumEvalSub").innerHTML = cost ? `<span class="${cls(evalV - cost)}">평가손익 ${fmtPct(evalV / cost - 1)}</span>` : `<span class="muted">보유 자산 없음</span>`;
   }
 
   function renderChart() {
-    const u = user();
     const svg = $("chart");
-    const pts = [...u.history, { t: Date.now(), v: totalValue(u) }];
+    const pts = [...me.snapshots, { t: Date.now(), v: totalValue() }];
     const w = svg.clientWidth || 600, h = 140, pad = 8;
     svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
-    const mdd = maxDrawdown(pts);
-    $("mddLabel").textContent = `최대 낙폭(MDD) ${fmtMdd(mdd)}`;
+    $("mddLabel").textContent = `최대 낙폭(MDD) ${fmtMdd(maxDrawdown(pts))}`;
     if (pts.length < 2) {
-      svg.innerHTML = `<text x="${w / 2}" y="${h / 2}" text-anchor="middle" fill="var(--muted)" font-size="13">거래를 시작하면 자산 추이가 그려져요</text>`;
+      svg.innerHTML = `<text x="${w / 2}" y="${h / 2}" text-anchor="middle" fill="var(--muted)" font-size="13">자산 추이는 매시간 기록돼요</text>`;
       return;
     }
     const vs = pts.map(p => p.v).concat(START_CASH);
     let lo = Math.min(...vs), hi = Math.max(...vs);
     if (hi - lo < START_CASH * 0.002) { lo -= START_CASH * 0.001; hi += START_CASH * 0.001; }
-    const t0 = pts[0].t, t1 = pts[pts.length - 1].t || t0 + 1;
+    const t0 = pts[0].t, t1 = pts[pts.length - 1].t;
     const x = t => pad + ((t - t0) / Math.max(t1 - t0, 1)) * (w - pad * 2);
     const y = v => pad + (1 - (v - lo) / (hi - lo)) * (h - pad * 2);
     const line = pts.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join("");
-    const last = pts[pts.length - 1].v;
-    const color = last >= START_CASH ? "var(--up)" : "var(--down)";
+    const color = pts[pts.length - 1].v >= START_CASH ? "var(--up)" : "var(--down)";
     const baseY = y(START_CASH).toFixed(1);
     svg.innerHTML = `
       <line x1="${pad}" x2="${w - pad}" y1="${baseY}" y2="${baseY}" stroke="var(--border)" stroke-dasharray="4 4"/>
@@ -982,44 +719,36 @@
   }
 
   function renderSourceLabel() {
-    let text;
-    if (assetTab === "coin") text = source === "live" ? "업비트 실시간" : source === "sim" ? "시뮬레이션" : "연결 중…";
-    else text = stock.mode === "real" ? `종가 · ${fmtYmd(stock.latest)} 기준` : stock.mode === "sample" ? `예시 종가 · ${fmtYmd(stock.latest)}` : "불러오는 중…";
-    $("srcLabel").textContent = text;
+    $("srcLabel").textContent = assetTab === "coin"
+      ? (coinLive ? "업비트 실시간" : coinLive === false ? "시세 연결 안 됨" : "연결 중…")
+      : (stock.ready ? `${fmtYmd(stock.latest)} 기준` : "데이터 준비 중");
   }
 
   function renderMarkets() {
     renderSourceLabel();
-    $("simBanner").classList.toggle("hidden", source !== "sim");
+    $("coinBanner").classList.toggle("hidden", coinLive !== false);
     $("marketBody").innerHTML = COINS.map(c => {
       const p = prices[c.market];
-      if (!p) return `<tr><td>${c.name}</td><td colspan="3" class="muted">-</td></tr>`;
+      const cells = p
+        ? `<td class="num ${cls(p.change)}">${fmtPrice(p.price)}</td><td class="num ${cls(p.change)}">${fmtPct(p.change)}</td><td class="num muted hide-sm">${fmtBig(p.volume)}</td>`
+        : `<td class="num muted">-</td><td class="num muted">-</td><td class="num muted hide-sm">-</td>`;
       return `<tr class="market-row ${c.market === selected ? "selected" : ""}" data-m="${c.market}">
-        <td><div class="coin-name">${c.name}</div><div class="coin-sym">${sym(c.market)}</div></td>
-        <td class="num ${cls(p.change)}">${fmtPrice(p.price)}</td>
-        <td class="num ${cls(p.change)}">${fmtPct(p.change)}</td>
-        <td class="num muted hide-sm">${fmtBig(p.volume)}</td>
-      </tr>`;
+        <td><div class="coin-name">${c.name}</div><div class="coin-sym">${sym(c.market)}</div></td>${cells}</tr>`;
     }).join("");
   }
 
   function renderStocks() {
     renderSourceLabel();
-    $("stockSampleBanner").classList.toggle("hidden", stock.mode !== "sample");
-    const day = stock.days[stock.latest];
-    if (!day) {
-      $("stockBody").innerHTML = `<tr><td colspan="4" class="muted">${stock.mode ? "종가 데이터가 없어요." : "불러오는 중…"}</td></tr>`;
+    if (!stock.ready) {
+      $("stockBody").innerHTML = `<tr><td colspan="4" class="muted" style="white-space:normal">아직 국내주식 시세 데이터가 없어요. 공공데이터 수집이 시작되면 코스피·코스닥 전 종목이 표시돼요.</td></tr>`;
       return;
     }
     const q = $("stockSearch").value.trim().toLowerCase();
-    let rows = day.rows;
-    if (q) rows = rows.filter(r => r[0].includes(q) || r[1].toLowerCase().includes(q));
+    let rows = stock.rows;
+    if (q) rows = rows.filter(r => r[0].toLowerCase().includes(q) || r[1].toLowerCase().includes(q));
     rows = rows.slice(0, 50);
     if (!rows.length) {
-      const hint = stock.mode === "sample"
-        ? `<br>지금은 예시 모드라 ${day.rows.length}개 종목만 있어요. 종가 데이터가 연결되면 코스피·코스닥 전 종목을 검색할 수 있어요.`
-        : "";
-      $("stockBody").innerHTML = `<tr><td colspan="4" class="muted" style="white-space:normal">"${esc(q)}" 검색 결과가 없어요.${hint}</td></tr>`;
+      $("stockBody").innerHTML = `<tr><td colspan="4" class="muted">"${esc(q)}" 검색 결과가 없어요.</td></tr>`;
       return;
     }
     $("stockBody").innerHTML = rows.map(([code, name, mkt, close, pct, value]) => {
@@ -1047,30 +776,25 @@
     return "15:30 전 주문은 그날 종가, 이후 주문은 다음 거래일 종가로 체결돼요.";
   }
   function schedText(type) {
-    const d = fmtYmdLong(orderEligibleDate(Date.now(), type));
+    const d = fmtYmdLong(orderEligibleDate(type));
     return type === "limit" ? `${d}부터 ${LIMIT_DAYS}거래일` : `${d} 이후 첫 ${ORDER_TYPE_LABEL[type]}`;
   }
 
-  function parseAmount() {
-    const v = parseFloat($("amount").value.replace(/,/g, ""));
-    return isFinite(v) ? v : 0;
-  }
-
   function renderOrder() {
-    const u = user();
     const p = prices[selected];
     const stockMode = isStock(selected);
-    $("oName").textContent = assetName(selected, u.holdings[selected]?.name);
+    const held = holdingOf(selected);
+    $("oName").textContent = assetName(selected, held?.name);
     $("oSym").textContent = sym(selected);
     $("oPrice").innerHTML = p ? `<span class="${cls(p.change)}">${fmtPrice(p.price)}</span>` : "-";
-    $("oPriceNote").textContent = stockMode && stock.latest ? `${fmtYmd(stock.latest)} 종가${stock.mode === "sample" ? " (예시)" : ""}` : "";
+    $("oPriceNote").textContent = stockMode && stock.latest ? `${fmtYmd(stock.latest)} 종가` : "";
     $("tabBuy").className = side === "buy" ? "active-buy" : "";
     $("tabSell").className = side === "sell" ? "active-sell" : "";
     const btn = $("submitBtn");
     btn.className = "submit " + side;
-    btn.textContent = (side === "buy" ? "매수" : "매도") + (stockMode ? " 예약" : "");
-    btn.disabled = !p;
-    const amt = parseAmount();
+    btn.textContent = busy ? "처리 중…" : (side === "buy" ? "매수" : "매도") + (stockMode ? " 예약" : "");
+    btn.disabled = busy || (stockMode && !p);
+
     $("schedRow").classList.toggle("hidden", !stockMode);
     $("typeSeg").classList.toggle("hidden", !stockMode);
     $("typeHelp").classList.toggle("hidden", !stockMode);
@@ -1081,20 +805,20 @@
     link.classList.toggle("hidden", !stockMode);
     if (stockMode) link.href = `https://finance.naver.com/item/main.naver?code=${stockCode(selected)}`;
 
+    const amt = parseNum("amount");
     if (!stockMode) {
-      const held = u.holdings[selected]?.qty || 0;
       $("feeLabel").textContent = "수수료 (0.05%)";
       if (side === "buy") {
         $("amountLabel").textContent = "주문 금액 (원)";
         $("availLabel").textContent = "주문 가능";
-        $("avail").textContent = fmtKRW(u.cash);
+        $("avail").textContent = fmtKRW(me.cash);
         $("estLabel").textContent = "예상 수량";
         $("est").textContent = p && amt ? fmtQty(amt / p.price) + " " + sym(selected) : "-";
         $("fee").textContent = amt ? fmtKRW(amt * COIN_FEE) : "-";
       } else {
         $("amountLabel").textContent = `매도 수량 (${sym(selected)})`;
         $("availLabel").textContent = "보유 수량";
-        $("avail").textContent = fmtQty(held) + " " + sym(selected);
+        $("avail").textContent = fmtQty(held?.qty || 0) + " " + sym(selected);
         $("estLabel").textContent = "예상 금액";
         $("est").textContent = p && amt ? fmtKRW(amt * p.price) : "-";
         $("fee").textContent = p && amt ? fmtKRW(amt * p.price * COIN_FEE) : "-";
@@ -1102,7 +826,7 @@
       return;
     }
 
-    const avail = (u.holdings[selected]?.qty || 0) - pendingSellQty(u, selected);
+    const avail = (held?.qty || 0) - pendingSellQty(selected);
     const limit = parseNum("limitPrice");
     $("sched").textContent = schedText(orderType);
     if (orderType === "limit") {
@@ -1111,7 +835,7 @@
       $("feeLabel").textContent = side === "buy" ? "수수료 (0.015%)" : "수수료+세금 (0.215%)";
       if (side === "buy") {
         $("availLabel").textContent = "주문 가능";
-        $("avail").textContent = fmtKRW(u.cash);
+        $("avail").textContent = fmtKRW(me.cash);
         $("estLabel").textContent = "필요 금액 (최대)";
         $("est").textContent = qty && limit ? fmtKRW(qty * limit * (1 + STOCK_FEE)) : "-";
         $("fee").textContent = qty && limit ? fmtKRW(qty * limit * STOCK_FEE) : "-";
@@ -1123,12 +847,11 @@
         $("fee").textContent = qty && limit ? fmtKRW(qty * limit * (STOCK_FEE + STOCK_TAX)) : "-";
       }
     } else if (side === "buy") {
-      const shares = p && amt ? Math.floor(amt / p.price) : 0;
       $("amountLabel").textContent = "주문 금액 (원)";
       $("availLabel").textContent = "주문 가능";
-      $("avail").textContent = fmtKRW(u.cash);
+      $("avail").textContent = fmtKRW(me.cash);
       $("estLabel").textContent = "예상 수량 (최근 종가 기준)";
-      $("est").textContent = amt ? shares.toLocaleString("ko-KR") + "주" : "-";
+      $("est").textContent = p && amt ? Math.floor(amt / p.price).toLocaleString("ko-KR") + "주" : "-";
       $("feeLabel").textContent = "수수료 (0.015%)";
       $("fee").textContent = amt ? fmtKRW(amt * STOCK_FEE) : "-";
     } else {
@@ -1143,33 +866,33 @@
   }
 
   function renderHoldings() {
-    const u = user();
-    const rows = Object.entries(u.holdings);
     let html = "";
-    if (u.orders.length) {
+    if (me.orders.length) {
       html += `<div class="sub-title">체결 대기 주문</div><div class="table-scroll"><table>
         <thead><tr><th>종목</th><th>구분</th><th>주문</th><th class="hide-sm">접수 시각</th><th>체결 기준</th><th></th></tr></thead>
-        <tbody>${u.orders.map(o => `<tr>
+        <tbody>${me.orders.map(o => {
+          const elig = isoToYmd(o.eligible);
+          return `<tr>
           <td><div class="coin-name">${esc(o.name)}</div><div class="coin-sym">${sym(o.market)}</div></td>
-          <td class="${o.side === "buy" ? "side-buy" : "side-sell"}">${o.side === "buy" ? "매수" : "매도"}<span class="tag">${ORDER_TYPE_LABEL[o.type || "close"]}</span></td>
-          <td class="num">${o.type === "limit" ? `${fmtKRW(o.limit)} × ${o.qty.toLocaleString("ko-KR")}주` : o.side === "buy" ? fmtKRW(o.amount) : o.qty.toLocaleString("ko-KR") + "주"}</td>
-          <td class="num muted hide-sm">${fmtTime(o.placedAt)}</td>
-          <td class="num">${fmtYmdLong(o.eligible)}${o.type === "limit" ? ` 부터 ${LIMIT_DAYS}거래일` : "~"}</td>
+          <td class="${o.side === "buy" ? "side-buy" : "side-sell"}">${o.side === "buy" ? "매수" : "매도"}<span class="tag">${ORDER_TYPE_LABEL[o.type]}</span></td>
+          <td class="num">${o.type === "limit" ? `${fmtKRW(o.limit_price)} × ${o.qty.toLocaleString("ko-KR")}주` : o.side === "buy" ? fmtKRW(o.amount) : o.qty.toLocaleString("ko-KR") + "주"}</td>
+          <td class="num muted hide-sm">${fmtTime(o.placed_at)}</td>
+          <td class="num">${fmtYmdLong(elig)}${o.type === "limit" ? ` 부터 ${LIMIT_DAYS}거래일` : "~"}</td>
           <td><button class="btn btn-sm" data-cancel="${o.id}">취소</button></td>
-        </tr>`).join("")}</tbody></table></div>`;
+        </tr>`;
+        }).join("")}</tbody></table></div>`;
     }
-    if (!rows.length) {
+    if (!me.holdings.length) {
       html += `<div class="empty">아직 보유한 자산이 없어요. 위 시세표에서 코인이나 국내주식을 골라 매수해 보세요.</div>`;
     } else {
-      html += `${u.orders.length ? '<div class="sub-title">보유 자산</div>' : ""}<div class="table-scroll"><table>
+      html += `${me.orders.length ? '<div class="sub-title">보유 자산</div>' : ""}<div class="table-scroll"><table>
       <thead><tr><th>종목</th><th>보유 수량</th><th class="hide-sm">평균 매수가</th><th>평가 금액</th><th>수익률</th></tr></thead>
-      <tbody>${rows.map(([m, h]) => {
-        const p = prices[m]?.price ?? h.lastPrice ?? 0;
-        const v = h.qty * p;
+      <tbody>${me.holdings.map(h => {
+        const v = h.qty * priceOf(h);
         const r = h.cost ? v / h.cost - 1 : 0;
-        return `<tr class="market-row" data-m="${m}">
-          <td><div class="coin-name">${esc(assetName(m, h.name))}</div><div class="coin-sym">${sym(m)}${isStock(m) ? " · 종가 평가" : ""}</div></td>
-          <td class="num">${fmtQtyFor(m, h.qty)}</td>
+        return `<tr class="market-row" data-m="${h.market}">
+          <td><div class="coin-name">${esc(assetName(h.market, h.name))}</div><div class="coin-sym">${sym(h.market)}${isStock(h.market) ? " · 종가 평가" : ""}</div></td>
+          <td class="num">${fmtQtyFor(h.market, h.qty)}</td>
           <td class="num hide-sm">${fmtPrice(h.cost / h.qty)}</td>
           <td class="num">${fmtKRW(v)}</td>
           <td class="num ${cls(r)}">${fmtPct(r)}</td>
@@ -1179,28 +902,24 @@
     $("tab-holdings").innerHTML = html;
   }
 
-  function tradeTags(t) {
-    if (t.source === "sim") return '<span class="tag">시뮬</span>';
-    const kind = ORDER_TYPE_LABEL[t.orderType || "close"];
-    if (t.source === "sample") return `<span class="tag">예시 · ${fmtYmd(t.basDt)} ${kind}</span>`;
-    if (t.source === "close") return `<span class="tag">${fmtYmd(t.basDt)} ${kind}</span>`;
-    return "";
+  function tradeTag(t) {
+    if (t.order_type === "market") return "";
+    return `<span class="tag">${t.bas_dt ? fmtYmd(isoToYmd(t.bas_dt)) + " " : ""}${ORDER_TYPE_LABEL[t.order_type] || ""}</span>`;
   }
 
   function renderTrades() {
-    const u = user();
-    if (!u.trades.length) {
-      $("tab-trades").innerHTML = `<div class="empty">거래 내역이 없어요. 체결된 거래는 기록되고 수정·삭제할 수 없어요.</div>`;
+    if (!me.trades.length) {
+      $("tab-trades").innerHTML = `<div class="empty">거래 내역이 없어요. 체결된 거래는 서버에 기록되고 수정·삭제할 수 없어요.</div>`;
       return;
     }
     $("tab-trades").innerHTML = `<div class="table-scroll"><table>
       <thead><tr><th>체결 시각</th><th>구분</th><th>종목</th><th>체결가</th><th class="hide-sm">수량</th><th>금액</th><th class="hide-sm">실현손익</th></tr></thead>
-      <tbody>${u.trades.slice().reverse().map(t => {
-        const label = t.side === "buy" ? "매수" : t.side === "sell" ? "매도" : (t.reason || "미체결(환불)");
+      <tbody>${me.trades.map(t => {
+        const label = t.side === "buy" ? "매수" : t.side === "sell" ? "매도" : (t.reason || "미체결");
         const sideCls = t.side === "buy" ? "side-buy" : t.side === "sell" ? "side-sell" : "muted";
         return `<tr>
-        <td class="num muted">${fmtTime(t.at)}</td>
-        <td class="${sideCls}">${label}${tradeTags(t)}</td>
+        <td class="num muted">${fmtTime(t.created_at)}</td>
+        <td class="${sideCls}">${label}${tradeTag(t)}</td>
         <td>${esc(isStock(t.market) ? (t.name || sym(t.market)) : sym(t.market))}</td>
         <td class="num">${fmtPrice(t.price)}</td>
         <td class="num hide-sm">${t.qty ? fmtQtyFor(t.market, t.qty) : "-"}</td>
@@ -1211,30 +930,23 @@
   }
 
   function renderRanking() {
-    const list = Object.values(db.users).map(u => {
-      const total = totalValue(u);
-      const sells = u.trades.filter(t => t.side === "sell");
-      const wins = sells.filter(t => t.pnl > 0).length;
-      return {
-        u, total, ret: total / START_CASH - 1,
-        mdd: maxDrawdown([...u.history, { t: Date.now(), v: total }]),
-        count: u.trades.filter(t => t.side !== "void").length,
-        winRate: sells.length ? wins / sells.length : null,
-      };
-    }).sort((a, b) => b.ret - a.ret);
+    if (!rankings.length) {
+      $("tab-ranking").innerHTML = `<div class="empty">아직 랭킹이 집계되지 않았어요. 랭킹은 매시간 갱신돼요.</div>`;
+      return;
+    }
+    const updated = rankings.reduce((a, r) => r.updated_at > a ? r.updated_at : a, "");
     $("tab-ranking").innerHTML = `<div class="table-scroll"><table>
       <thead><tr><th>순위</th><th style="text-align:left">닉네임</th><th>수익률</th><th class="hide-sm">총 자산</th><th>MDD</th><th class="hide-sm">승률</th><th class="hide-sm">거래</th></tr></thead>
-      <tbody>${list.map((r, i) => `<tr>
+      <tbody>${rankings.map((r, i) => `<tr>
         <td class="rank-no">${i + 1}</td>
-        <td style="text-align:left">${esc(r.u.name)}${r.u.demo ? '<span class="tag">예시</span>' : ""}${r.u.name === db.current ? '<span class="tag me">나</span>' : ""}</td>
+        <td style="text-align:left">${esc(r.nickname)}${r.user_id === me.id ? '<span class="tag me">나</span>' : ""}</td>
         <td class="num ${cls(r.ret)}">${fmtPct(r.ret)}</td>
         <td class="num hide-sm">${fmtKRW(r.total)}</td>
         <td class="num down">${fmtMdd(r.mdd)}</td>
-        <td class="num hide-sm">${r.winRate == null ? "-" : (r.winRate * 100).toFixed(0) + "%"}</td>
-        <td class="num hide-sm">${r.count}</td>
+        <td class="num hide-sm">${r.win_rate == null ? "-" : (r.win_rate * 100).toFixed(0) + "%"}</td>
+        <td class="num hide-sm">${r.trades}</td>
       </tr>`).join("")}</tbody></table></div>
-      <div class="notice">시안에서는 이 기기의 계정끼리만 비교해요. "예시" 계정은 설명용 가상 계정입니다.
-      정식 버전에서는 전체 회원 랭킹, 인증 고수 배지, 시즌제가 들어가요.</div>`;
+      <div class="notice">랭킹은 매시간 서버에서 다시 계산돼요. 마지막 갱신: ${updated ? fmtTime(updated) : "-"}</div>`;
   }
 
   function renderTabs() {
@@ -1246,7 +958,7 @@
   }
 
   function renderAll() {
-    if (!user()) return;
+    if (!me.id) return;
     renderAssetTabs();
     renderMarkets();
     renderStocks();
@@ -1257,15 +969,14 @@
   }
 
   function setMsg(text, ok) {
-    const el = $("orderMsg");
-    el.textContent = text || "";
-    el.style.color = ok ? "var(--accent)" : "var(--up)";
+    $("orderMsg").textContent = text || "";
+    $("orderMsg").style.color = ok ? "var(--accent)" : "var(--up)";
   }
 
   // ---------- Events ----------
-  $("loginForm").addEventListener("submit", e => { e.preventDefault(); login($("nickname").value); });
-  $("existingList").addEventListener("click", e => { const n = e.target.dataset?.name; if (n) login(n); });
-  $("logoutBtn").addEventListener("click", () => { db.current = null; save(); showLogin(); });
+  $("authTabs").addEventListener("click", e => { const m = e.target.dataset?.mode; if (m) setAuthMode(m); });
+  $("authForm").addEventListener("submit", submitAuth);
+  $("logoutBtn").addEventListener("click", () => sb?.auth.signOut());
 
   function selectMarket(m) {
     if (!COIN_BY_MARKET[m] && !isStock(m)) return;
@@ -1284,17 +995,16 @@
     const a = e.target.dataset?.asset;
     if (a) { assetTab = a; renderAssetTabs(); }
   });
-  $("nextSampleDay").addEventListener("click", async () => {
-    if (stock.mode !== "sample") return;
-    addSampleDay();
-    applyLatestStockPrices();
-    await settleAllOrders();
-    renderAll();
-  });
 
-  $("tab-holdings").addEventListener("click", e => {
-    const c = e.target.dataset?.cancel;
-    if (c) { cancelOrder(user(), c); renderAll(); return; }
+  $("tab-holdings").addEventListener("click", async e => {
+    const id = e.target.dataset?.cancel;
+    if (id) {
+      e.target.disabled = true;
+      const { error } = await sb.rpc("cancel_order", { p_id: id });
+      if (error) alert(error.message);
+      await refreshMine();
+      return;
+    }
     const r = e.target.closest("[data-m]");
     if (r) {
       assetTab = isStock(r.dataset.m) ? "stock" : "coin";
@@ -1322,76 +1032,96 @@
   $("pctBtns").addEventListener("click", e => {
     const p = parseFloat(e.target.dataset?.p);
     if (!p) return;
-    const u = user();
+    const held = holdingOf(selected)?.qty || 0;
     if (isStock(selected) && orderType === "limit" && side === "buy") {
       const limit = parseNum("limitPrice");
       if (!limit) { setMsg("지정가를 먼저 입력해 주세요.", false); return; }
-      $("amount").value = String(Math.floor((u.cash * p) / (limit * (1 + STOCK_FEE))));
+      $("amount").value = String(Math.floor((me.cash * p) / (limit * (1 + STOCK_FEE))));
     } else if (side === "buy") {
       const rate = isStock(selected) ? STOCK_FEE : COIN_FEE;
-      $("amount").value = Math.floor((u.cash * p) / (1 + rate)).toLocaleString("ko-KR");
+      $("amount").value = Math.floor((me.cash * p) / (1 + rate)).toLocaleString("ko-KR");
     } else if (isStock(selected)) {
-      const avail = (u.holdings[selected]?.qty || 0) - pendingSellQty(u, selected);
-      $("amount").value = String(Math.floor(avail * p));
+      $("amount").value = String(Math.floor((held - pendingSellQty(selected)) * p));
     } else {
-      const held = u.holdings[selected]?.qty || 0;
       $("amount").value = p === 1 ? String(held) : String(+(held * p).toFixed(8));
     }
     renderOrder();
   });
 
-  $("submitBtn").addEventListener("click", () => {
-    const u = user();
-    const amt = parseAmount();
+  $("submitBtn").addEventListener("click", async () => {
+    const amt = parseNum("amount");
+    if (!(amt > 0)) { setMsg(side === "buy" && !(isStock(selected) && orderType === "limit") ? "주문 금액을 입력해 주세요." : "수량을 입력해 주세요.", false); return; }
+    busy = true;
+    renderOrder();
+    let result;
     if (isStock(selected)) {
-      const { err, order } = placeStockOrder(u, selected, side, orderType, amt, parseNum("limitPrice"));
-      if (err) { setMsg(err, false); return; }
-      const what = order.type === "limit"
-        ? `${fmtKRW(order.limit)}에 ${order.qty.toLocaleString("ko-KR")}주 ${side === "buy" ? "매수" : "매도"}`
-        : side === "buy" ? fmtKRW(order.amount) + " 매수" : order.qty.toLocaleString("ko-KR") + "주 매도";
-      setMsg(`${order.name} ${what} 예약 완료. 체결 기준: ${schedText(order.type)}.`, true);
+      result = await sb.rpc("place_stock_order", {
+        p_market: selected, p_side: side, p_type: orderType, p_value: amt,
+        p_limit: orderType === "limit" ? parseNum("limitPrice") : null,
+      });
     } else {
-      const err = side === "buy" ? buyCoin(u, selected, amt) : sellCoin(u, selected, amt);
-      if (err) { setMsg(err, false); return; }
-      const t = u.trades[u.trades.length - 1];
-      setMsg(`${sym(selected)} ${fmtQty(t.qty)}개 ${side === "buy" ? "매수" : "매도"} 체결 (${fmtPrice(t.price)}원)`, true);
+      result = side === "buy"
+        ? await sb.rpc("buy_coin", { p_market: selected, p_krw: amt })
+        : await sb.rpc("sell_coin", { p_market: selected, p_qty: amt });
+    }
+    busy = false;
+    if (result.error) {
+      setMsg(result.error.message, false);
+      renderOrder();
+      return;
+    }
+    const d = result.data;
+    if (isStock(selected)) {
+      const what = d.type === "limit"
+        ? `${fmtKRW(d.limit_price)}에 ${Number(d.qty).toLocaleString("ko-KR")}주 ${side === "buy" ? "매수" : "매도"}`
+        : side === "buy" ? fmtKRW(d.amount) + " 매수" : Number(d.qty).toLocaleString("ko-KR") + "주 매도";
+      setMsg(`${d.name} ${what} 예약 완료. 체결 기준: ${schedText(d.type)}.`, true);
+    } else {
+      setMsg(`${sym(selected)} ${fmtQty(Number(d.qty))}개 ${side === "buy" ? "매수" : "매도"} 체결 (${fmtPrice(Number(d.price))}원)`, true);
     }
     $("amount").value = "";
-    renderAll();
+    await refreshMine();
   });
 
-  $("tabs").addEventListener("click", e => {
+  $("tabs").addEventListener("click", async e => {
     const t = e.target.dataset?.tab;
-    if (t) { activeTab = t; renderTabs(); }
+    if (!t) return;
+    activeTab = t;
+    renderTabs();
+    if (t === "ranking") { await loadRankings(); renderTabs(); }
   });
 
-  window.addEventListener("resize", () => { if (user()) renderChart(); });
+  window.addEventListener("resize", () => { if (me.id) renderChart(); });
 
-  // ---------- Loop ----------
-  async function tick() {
-    await refreshPrices();
-    ensureDemoAccounts();
-    for (const u of Object.values(db.users)) snapshot(u);
-    save();
-    if (user()) {
+  // ---------- Start ----------
+  async function coinTick() {
+    await refreshCoinPrices();
+    if (me.id && loaded) {
       renderMarkets();
       renderSummary();
       renderChart();
       renderOrder();
-      if (activeTab !== "trades") renderTabs();
+      if (activeTab === "holdings") renderHoldings();
     }
   }
-
   async function stockTick() {
     await refreshStocks();
-    if (user()) renderAll();
+    if (me.id && loaded) renderAll();
   }
 
-  if (db.current && db.users[db.current]) showApp(); else showLogin();
-  tick();
+  setAuthMode("login");
+  if (!sb) {
+    setAuthMsg("서버에 연결할 수 없어요. 인터넷 연결을 확인하고 새로고침해 주세요.");
+  } else {
+    sb.auth.onAuthStateChange((_event, session) => { setTimeout(() => onSession(session), 0); });
+    sb.auth.getSession().then(({ data }) => onSession(data.session));
+  }
+  coinTick();
   stockTick();
-  setInterval(tick, POLL_MS);
+  setInterval(coinTick, POLL_MS);
   setInterval(stockTick, STOCK_REFRESH_MS);
+  // Picks up fills and expiries done by the server (stock settlement, rankings).
+  setInterval(() => { if (me.id && loaded && !busy) refreshMine(); }, DATA_REFRESH_MS);
 })();
 </script>
 </body>

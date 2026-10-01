@@ -40,3 +40,9 @@ jobs:
           git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
           git commit -m "Update stock closing prices"
           git push
+
+      - name: Sync prices, settle orders and refresh rankings in Supabase
+        env:
+          SUPABASE_URL: https://vlytmxbrvtmiclkxnewi.supabase.co
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node scripts/sync-supabase.mjs
