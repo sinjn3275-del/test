@@ -1,0 +1,840 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>입고수 모의투자</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --surface: #ffffff;
+    --surface-2: #f0f2f5;
+    --border: #e2e5ea;
+    --text: #15181d;
+    --muted: #6b7280;
+    --accent: #3b5bdb;
+    --accent-weak: #e7ecff;
+    --up: #d63a3a;
+    --down: #2563eb;
+    --warn-bg: #fff6e0;
+    --warn-text: #8a5a00;
+    --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1115;
+      --surface: #171a21;
+      --surface-2: #1f232c;
+      --border: #2a2f3a;
+      --text: #e8eaee;
+      --muted: #9aa3b2;
+      --accent: #7b93ff;
+      --accent-weak: #232b4a;
+      --up: #ff6b6b;
+      --down: #6ea8ff;
+      --warn-bg: #3a2f12;
+      --warn-text: #f3c969;
+      --shadow: none;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1115;
+    --surface: #171a21;
+    --surface-2: #1f232c;
+    --border: #2a2f3a;
+    --text: #e8eaee;
+    --muted: #9aa3b2;
+    --accent: #7b93ff;
+    --accent-weak: #232b4a;
+    --up: #ff6b6b;
+    --down: #6ea8ff;
+    --warn-bg: #3a2f12;
+    --warn-text: #f3c969;
+    --shadow: none;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Malgun Gothic", "Noto Sans KR", sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  button, input, select { font: inherit; color: inherit; }
+  .num { font-variant-numeric: tabular-nums; }
+  .up { color: var(--up); }
+  .down { color: var(--down); }
+  .muted { color: var(--muted); }
+  .hidden { display: none !important; }
+
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+
+  /* Header */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 10;
+  }
+  header .wrap { display: flex; align-items: center; justify-content: space-between; height: 56px; gap: 12px; }
+  .logo { font-weight: 800; font-size: 20px; letter-spacing: -0.5px; }
+  .logo small { font-weight: 500; font-size: 12px; color: var(--muted); margin-left: 6px; letter-spacing: 0; }
+  .user-chip { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  .btn {
+    border: 1px solid var(--border); background: var(--surface); border-radius: 8px;
+    padding: 6px 12px; cursor: pointer;
+  }
+  .btn:hover { background: var(--surface-2); }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .btn-primary:hover { background: var(--accent); filter: brightness(1.08); }
+
+  .banner {
+    margin: 12px 0 0; padding: 10px 14px; border-radius: 10px;
+    background: var(--warn-bg); color: var(--warn-text); font-size: 13px;
+  }
+
+  /* Login */
+  .login {
+    max-width: 420px; margin: 48px auto; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 16px; padding: 28px; box-shadow: var(--shadow);
+  }
+  .login h1 { margin: 0 0 4px; font-size: 26px; letter-spacing: -0.5px; }
+  .login p { margin: 0 0 20px; color: var(--muted); }
+  .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+  .field label { font-size: 13px; color: var(--muted); }
+  .input {
+    width: 100%; border: 1px solid var(--border); background: var(--surface);
+    border-radius: 10px; padding: 10px 12px;
+  }
+  .input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+  .login .btn-primary { width: 100%; padding: 12px; border-radius: 10px; }
+  .existing { margin-top: 20px; }
+  .existing h3 { font-size: 13px; color: var(--muted); font-weight: 500; margin: 0 0 8px; }
+  .existing .list { display: flex; flex-wrap: wrap; gap: 8px; }
+  .notice { margin-top: 20px; font-size: 12px; color: var(--muted); }
+
+  /* Summary */
+  .summary {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0;
+  }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 16px; box-shadow: var(--shadow); min-width: 0;
+  }
+  .stat .label { font-size: 13px; color: var(--muted); }
+  .stat .value { font-size: 22px; font-weight: 700; margin-top: 2px; letter-spacing: -0.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stat .sub { font-size: 13px; margin-top: 2px; }
+
+  .chart-card { margin-bottom: 16px; }
+  .chart-card .head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+  .chart-card h2 { margin: 0; font-size: 15px; }
+  #chart { width: 100%; height: 140px; display: block; }
+
+  /* Main grid */
+  .main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+  .section-title { margin: 0 0 12px; font-size: 15px; display: flex; justify-content: space-between; align-items: center; }
+  .src { font-size: 12px; font-weight: 500; padding: 2px 8px; border-radius: 999px; background: var(--accent-weak); color: var(--accent); }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 10px 8px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { font-size: 12px; color: var(--muted); font-weight: 500; }
+  th:first-child, td:first-child { text-align: left; }
+  tbody tr:last-child td { border-bottom: 0; }
+  .market-row { cursor: pointer; }
+  .market-row:hover { background: var(--surface-2); }
+  .market-row.selected { background: var(--accent-weak); }
+  .coin-name { font-weight: 600; }
+  .coin-sym { font-size: 12px; color: var(--muted); }
+  .table-scroll { overflow-x: auto; }
+
+  /* Order panel */
+  .order { position: sticky; top: 72px; }
+  .order .coin-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
+  .order .coin-head .price { font-size: 20px; font-weight: 700; }
+  .seg { display: grid; grid-template-columns: 1fr 1fr; background: var(--surface-2); border-radius: 10px; padding: 4px; margin-bottom: 14px; }
+  .seg button { border: 0; background: transparent; padding: 8px; border-radius: 8px; cursor: pointer; font-weight: 600; color: var(--muted); }
+  .seg button.active-buy { background: var(--up); color: #fff; }
+  .seg button.active-sell { background: var(--down); color: #fff; }
+  .pct { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 14px; }
+  .pct button { border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 6px 0; cursor: pointer; font-size: 13px; }
+  .pct button:hover { background: var(--surface-2); }
+  .order-info { font-size: 13px; color: var(--muted); display: grid; gap: 4px; margin-bottom: 14px; }
+  .order-info div { display: flex; justify-content: space-between; }
+  .order-info span:last-child { color: var(--text); }
+  .submit { width: 100%; padding: 12px; border: 0; border-radius: 10px; color: #fff; font-weight: 700; cursor: pointer; }
+  .submit.buy { background: var(--up); }
+  .submit.sell { background: var(--down); }
+  .submit:disabled { opacity: .5; cursor: not-allowed; }
+  .msg { font-size: 13px; margin-top: 10px; min-height: 20px; }
+
+  /* Tabs */
+  .tabs-card { margin: 16px 0 32px; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin: -4px -4px 12px; padding: 0 4px; overflow-x: auto; }
+  .tabs button { border: 0; background: transparent; padding: 10px 12px; cursor: pointer; color: var(--muted); font-weight: 600; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+  .tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+  .empty { padding: 28px 8px; text-align: center; color: var(--muted); font-size: 14px; }
+  .tag { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--surface-2); color: var(--muted); margin-left: 6px; vertical-align: 1px; }
+  .tag.me { background: var(--accent-weak); color: var(--accent); }
+  .rank-no { font-weight: 700; width: 36px; }
+  .side-buy { color: var(--up); font-weight: 600; }
+  .side-sell { color: var(--down); font-weight: 600; }
+
+  footer { padding: 0 0 32px; font-size: 12px; color: var(--muted); }
+
+  @media (max-width: 900px) {
+    .main { grid-template-columns: 1fr; }
+    .order { position: static; }
+  }
+  @media (max-width: 640px) {
+    .summary { grid-template-columns: 1fr 1fr; gap: 8px; }
+    .stat .value { font-size: 18px; }
+    .card { padding: 14px; }
+    .hide-sm { display: none; }
+    th, td { padding: 9px 6px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="logo">입고수<small>말 말고 수익률로</small></div>
+    <div class="user-chip hidden" id="userChip">
+      <span id="userName"></span>
+      <button class="btn" id="logoutBtn">로그아웃</button>
+    </div>
+  </div>
+</header>
+
+<!-- Login -->
+<div class="wrap" id="loginView">
+  <div class="login">
+    <h1>입고수</h1>
+    <p>입으로만 고수인지, 진짜 고수인지.<br>모의투자금 <b>1억 원</b>으로 증명해 보세요.</p>
+    <form id="loginForm">
+      <div class="field">
+        <label for="nickname">닉네임</label>
+        <input class="input" id="nickname" maxlength="12" placeholder="2~12자" autocomplete="off" required>
+      </div>
+      <button class="btn btn-primary" type="submit">시작하기</button>
+    </form>
+    <div class="existing hidden" id="existingWrap">
+      <h3>이 기기에 저장된 계정</h3>
+      <div class="list" id="existingList"></div>
+    </div>
+    <div class="notice">
+      시안 버전이라 계정과 거래 기록은 이 브라우저에만 저장돼요. 정식 버전에서는 소셜 로그인과 서버 저장으로 바뀝니다.
+      실제 돈은 오가지 않으며 투자 권유가 아닙니다.
+    </div>
+  </div>
+</div>
+
+<!-- App -->
+<div class="wrap hidden" id="appView">
+  <div class="banner hidden" id="simBanner">
+    실시간 시세(업비트)에 연결하지 못해 <b>시뮬레이션 시세</b>로 동작 중이에요. 이때 체결된 거래는 "시뮬" 표시가 붙어요.
+  </div>
+
+  <section class="summary">
+    <div class="card stat">
+      <div class="label">총 자산</div>
+      <div class="value num" id="sumTotal">-</div>
+      <div class="sub num" id="sumTotalSub">&nbsp;</div>
+    </div>
+    <div class="card stat">
+      <div class="label">수익률</div>
+      <div class="value num" id="sumReturn">-</div>
+      <div class="sub muted">시작 자금 1억 원 기준</div>
+    </div>
+    <div class="card stat">
+      <div class="label">주문 가능 현금</div>
+      <div class="value num" id="sumCash">-</div>
+      <div class="sub muted" id="sumCashSub">&nbsp;</div>
+    </div>
+    <div class="card stat">
+      <div class="label">보유 코인 평가</div>
+      <div class="value num" id="sumEval">-</div>
+      <div class="sub num" id="sumEvalSub">&nbsp;</div>
+    </div>
+  </section>
+
+  <section class="card chart-card">
+    <div class="head">
+      <h2>총 자산 추이</h2>
+      <span class="muted" style="font-size:12px" id="mddLabel"></span>
+    </div>
+    <svg id="chart" preserveAspectRatio="none" aria-label="총 자산 추이 그래프"></svg>
+  </section>
+
+  <section class="main">
+    <div class="card">
+      <h2 class="section-title">시세 <span class="src" id="srcLabel">연결 중…</span></h2>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr><th>코인</th><th>현재가</th><th>전일대비</th><th class="hide-sm">거래대금(24h)</th></tr>
+          </thead>
+          <tbody id="marketBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card order">
+      <div class="coin-head">
+        <div><span class="coin-name" id="oName">-</span> <span class="coin-sym" id="oSym"></span></div>
+        <div class="price num" id="oPrice">-</div>
+      </div>
+      <div class="seg">
+        <button id="tabBuy" class="active-buy">매수</button>
+        <button id="tabSell">매도</button>
+      </div>
+      <div class="field">
+        <label for="amount" id="amountLabel">주문 금액 (원)</label>
+        <input class="input num" id="amount" inputmode="decimal" placeholder="0">
+      </div>
+      <div class="pct" id="pctBtns">
+        <button data-p="0.1">10%</button>
+        <button data-p="0.25">25%</button>
+        <button data-p="0.5">50%</button>
+        <button data-p="1">최대</button>
+      </div>
+      <div class="order-info">
+        <div><span id="availLabel">주문 가능</span><span class="num" id="avail">-</span></div>
+        <div><span id="estLabel">예상 수량</span><span class="num" id="est">-</span></div>
+        <div><span>수수료 (0.05%)</span><span class="num" id="fee">-</span></div>
+      </div>
+      <button class="submit buy" id="submitBtn">매수</button>
+      <div class="msg" id="orderMsg"></div>
+    </div>
+  </section>
+
+  <section class="card tabs-card">
+    <div class="tabs" id="tabs">
+      <button data-tab="holdings" class="active">보유 자산</button>
+      <button data-tab="trades">거래 내역</button>
+      <button data-tab="ranking">랭킹</button>
+    </div>
+    <div id="tab-holdings"></div>
+    <div id="tab-trades" class="hidden"></div>
+    <div id="tab-ranking" class="hidden"></div>
+  </section>
+
+  <footer>
+    입고수 시안 · 모의투자 서비스이며 실제 투자 권유가 아닙니다. 시세 출처: 업비트 공개 API (연결 실패 시 시뮬레이션).
+    거래 기록은 수정·삭제할 수 없습니다.
+  </footer>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  const START_CASH = 100_000_000;
+  const FEE_RATE = 0.0005;
+  const MIN_ORDER = 5_000;
+  const POLL_MS = 3_000;
+  const SNAPSHOT_MS = 30_000;
+  const MAX_HISTORY = 600;
+  const STORE_KEY = "ipgosu.v1";
+
+  const COINS = [
+    { market: "KRW-BTC", name: "비트코인", base: 140_000_000 },
+    { market: "KRW-ETH", name: "이더리움", base: 5_000_000 },
+    { market: "KRW-XRP", name: "리플", base: 3_500 },
+    { market: "KRW-SOL", name: "솔라나", base: 250_000 },
+    { market: "KRW-DOGE", name: "도지코인", base: 300 },
+    { market: "KRW-ADA", name: "에이다", base: 1_000 },
+    { market: "KRW-AVAX", name: "아발란체", base: 35_000 },
+    { market: "KRW-LINK", name: "체인링크", base: 25_000 },
+    { market: "KRW-DOT", name: "폴카닷", base: 6_000 },
+    { market: "KRW-TRX", name: "트론", base: 450 },
+  ];
+  const COIN_BY_MARKET = Object.fromEntries(COINS.map(c => [c.market, c]));
+
+  // ---------- Storage ----------
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) { /* storage unavailable */ }
+    return { users: {}, current: null };
+  }
+  function save() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); } catch (e) { /* ignore */ }
+  }
+  const db = load();
+
+  function newUser(name, demo = false) {
+    return { name, demo, createdAt: Date.now(), cash: START_CASH, holdings: {}, trades: [], history: [] };
+  }
+
+  // ---------- Prices ----------
+  const prices = {};   // market -> { price, change, volume }
+  let source = null;   // "live" | "sim"
+  let liveFailures = 0;
+
+  async function fetchLive() {
+    const url = "https://api.upbit.com/v1/ticker?markets=" + COINS.map(c => c.market).join(",");
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 4000);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      for (const t of data) {
+        prices[t.market] = { price: t.trade_price, change: t.signed_change_rate, volume: t.acc_trade_price_24h };
+      }
+      return true;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  function stepSim() {
+    for (const c of COINS) {
+      const p = prices[c.market];
+      if (!p) {
+        prices[c.market] = { price: c.base, open: c.base, change: 0, volume: c.base * 4e5 * (1 + Math.random()) };
+        continue;
+      }
+      const open = p.open ?? p.price;
+      const shock = (Math.random() - 0.5) * 0.006;
+      const next = Math.max(p.price * (1 + shock), 0.0001);
+      prices[c.market] = { price: roundPrice(next), open, change: next / open - 1, volume: p.volume * (1 + Math.random() * 0.002) };
+    }
+  }
+
+  async function refreshPrices() {
+    if (liveFailures < 2) {
+      try {
+        await fetchLive();
+        liveFailures = 0;
+        source = "live";
+        return;
+      } catch (e) {
+        liveFailures++;
+        if (liveFailures < 2 && Object.keys(prices).length) return;
+      }
+    }
+    source = "sim";
+    stepSim();
+  }
+
+  function roundPrice(p) {
+    if (p >= 1000) return Math.round(p);
+    if (p >= 100) return Math.round(p * 10) / 10;
+    if (p >= 1) return Math.round(p * 100) / 100;
+    return Math.round(p * 10000) / 10000;
+  }
+
+  // ---------- Portfolio math ----------
+  function holdingsValue(u) {
+    let v = 0;
+    for (const [m, h] of Object.entries(u.holdings)) {
+      const p = prices[m]?.price;
+      if (p) v += h.qty * p;
+    }
+    return v;
+  }
+  function totalValue(u) { return u.cash + holdingsValue(u); }
+  function totalCost(u) { return Object.values(u.holdings).reduce((s, h) => s + h.cost, 0); }
+
+  function maxDrawdown(history) {
+    let peak = -Infinity, mdd = 0;
+    for (const { v } of history) {
+      if (v > peak) peak = v;
+      if (peak > 0) mdd = Math.min(mdd, v / peak - 1);
+    }
+    return mdd;
+  }
+
+  function snapshot(u, force = false) {
+    const last = u.history[u.history.length - 1];
+    const now = Date.now();
+    if (!force && last && now - last.t < SNAPSHOT_MS) return;
+    u.history.push({ t: now, v: Math.round(totalValue(u)) });
+    if (u.history.length > MAX_HISTORY) u.history.splice(0, u.history.length - MAX_HISTORY);
+  }
+
+  // ---------- Orders ----------
+  function buy(u, market, krw) {
+    const price = prices[market]?.price;
+    if (!price) return "시세를 불러오는 중이에요.";
+    if (!(krw >= MIN_ORDER)) return `최소 주문 금액은 ${fmtKRW(MIN_ORDER)}이에요.`;
+    const fee = krw * FEE_RATE;
+    if (krw + fee > u.cash + 1e-6) return "주문 가능 현금이 부족해요.";
+    const qty = krw / price;
+    const h = u.holdings[market] || { qty: 0, cost: 0 };
+    h.qty += qty;
+    h.cost += krw + fee;
+    u.holdings[market] = h;
+    u.cash -= krw + fee;
+    record(u, { side: "buy", market, price, qty, amount: krw, fee });
+    return null;
+  }
+
+  function sell(u, market, qty) {
+    const price = prices[market]?.price;
+    const h = u.holdings[market];
+    if (!price) return "시세를 불러오는 중이에요.";
+    if (!h || h.qty <= 0) return "보유한 수량이 없어요.";
+    if (!(qty > 0)) return "매도 수량을 입력해 주세요.";
+    if (qty > h.qty * (1 + 1e-9)) return "보유 수량보다 많이 팔 수 없어요.";
+    qty = Math.min(qty, h.qty);
+    const amount = qty * price;
+    if (amount < MIN_ORDER && qty < h.qty) return `최소 주문 금액은 ${fmtKRW(MIN_ORDER)}이에요.`;
+    const fee = amount * FEE_RATE;
+    const costPart = h.cost * (qty / h.qty);
+    const pnl = amount - fee - costPart;
+    h.qty -= qty;
+    h.cost -= costPart;
+    if (h.qty <= 1e-12) delete u.holdings[market];
+    u.cash += amount - fee;
+    record(u, { side: "sell", market, price, qty, amount, fee, pnl });
+    return null;
+  }
+
+  function record(u, t) {
+    // Append-only: trades are never edited or removed.
+    u.trades.push(Object.freeze({ ...t, at: Date.now(), source }));
+    snapshot(u, true);
+    save();
+  }
+
+  // ---------- Demo accounts for ranking ----------
+  function ensureDemoAccounts() {
+    if (db.users["말로만고수"] || !Object.keys(prices).length) return;
+    const allIn = newUser("말로만고수", true);
+    const doge = prices["KRW-DOGE"].price;
+    allIn.cash = 0;
+    allIn.holdings["KRW-DOGE"] = { qty: START_CASH / (doge * 1.35), cost: START_CASH };
+    allIn.trades.push({ side: "buy", market: "KRW-DOGE", price: doge * 1.35, qty: START_CASH / (doge * 1.35), amount: START_CASH, fee: 0, at: Date.now(), source: "demo" });
+
+    const steady = newUser("꾸준이", true);
+    const mix = [["KRW-BTC", 0.4, 0.97], ["KRW-ETH", 0.2, 0.99]];
+    for (const [m, w, f] of mix) {
+      const p = prices[m].price * f;
+      const amt = START_CASH * w;
+      steady.holdings[m] = { qty: amt / p, cost: amt };
+      steady.cash -= amt;
+      steady.trades.push({ side: "buy", market: m, price: p, qty: amt / p, amount: amt, fee: 0, at: Date.now(), source: "demo" });
+    }
+    db.users[allIn.name] = allIn;
+    db.users[steady.name] = steady;
+    save();
+  }
+
+  // ---------- Formatting ----------
+  const fmtKRW = n => Math.round(n).toLocaleString("ko-KR") + "원";
+  const fmtPrice = p => p >= 100 ? p.toLocaleString("ko-KR", { maximumFractionDigits: p >= 1000 ? 0 : 1 })
+                                 : p.toLocaleString("ko-KR", { maximumFractionDigits: 4 });
+  const fmtMdd = r => (Math.abs(r) < 0.0005 ? 0 : r * 100).toFixed(1) + "%";
+  const fmtPct = r => (r > 0 ? "+" : "") + (r * 100).toFixed(2) + "%";
+  const fmtQty = q => q.toLocaleString("ko-KR", { maximumFractionDigits: q >= 1 ? 4 : 8 });
+  const fmtBig = n => n >= 1e12 ? (n / 1e12).toFixed(1) + "조" : n >= 1e8 ? Math.round(n / 1e8).toLocaleString("ko-KR") + "억" : Math.round(n / 1e4).toLocaleString("ko-KR") + "만";
+  const cls = r => r > 0 ? "up" : r < 0 ? "down" : "";
+  const sym = m => m.replace("KRW-", "");
+  const esc = s => String(s).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+  const fmtTime = t => new Date(t).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+  // ---------- UI ----------
+  const $ = id => document.getElementById(id);
+  let selected = COINS[0].market;
+  let side = "buy";
+  let activeTab = "holdings";
+  const user = () => db.users[db.current];
+
+  function showLogin() {
+    $("loginView").classList.remove("hidden");
+    $("appView").classList.add("hidden");
+    $("userChip").classList.add("hidden");
+    const names = Object.values(db.users).filter(u => !u.demo).map(u => u.name);
+    $("existingWrap").classList.toggle("hidden", !names.length);
+    $("existingList").innerHTML = names.map(n => `<button class="btn" data-name="${esc(n)}">${esc(n)}</button>`).join("");
+  }
+
+  function showApp() {
+    $("loginView").classList.add("hidden");
+    $("appView").classList.remove("hidden");
+    $("userChip").classList.remove("hidden");
+    $("userName").textContent = db.current + " 님";
+    renderAll();
+  }
+
+  function login(name) {
+    name = name.trim();
+    if (name.length < 2) { alert("닉네임은 2자 이상이어야 해요."); return; }
+    const existing = db.users[name];
+    if (existing?.demo) { alert("예시 계정 이름이에요. 다른 닉네임을 써 주세요."); return; }
+    if (!existing) db.users[name] = newUser(name);
+    db.current = name;
+    save();
+    showApp();
+  }
+
+  function renderSummary() {
+    const u = user();
+    const total = totalValue(u);
+    const ret = total / START_CASH - 1;
+    const evalV = holdingsValue(u);
+    const cost = totalCost(u);
+    const evalPnl = evalV - cost;
+    $("sumTotal").textContent = fmtKRW(total);
+    $("sumTotalSub").innerHTML = `<span class="${cls(ret)}">${(total - START_CASH >= 0 ? "+" : "") + fmtKRW(total - START_CASH)}</span>`;
+    $("sumReturn").innerHTML = `<span class="${cls(ret)}">${fmtPct(ret)}</span>`;
+    $("sumCash").textContent = fmtKRW(u.cash);
+    $("sumCashSub").textContent = `자산의 ${total ? ((u.cash / total) * 100).toFixed(1) : 0}%`;
+    $("sumEval").textContent = fmtKRW(evalV);
+    $("sumEvalSub").innerHTML = cost ? `<span class="${cls(evalPnl)}">평가손익 ${fmtPct(evalPnl / cost)}</span>` : `<span class="muted">보유 코인 없음</span>`;
+  }
+
+  function renderChart() {
+    const u = user();
+    const svg = $("chart");
+    const pts = [...u.history, { t: Date.now(), v: totalValue(u) }];
+    const w = svg.clientWidth || 600, h = 140, pad = 8;
+    svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+    const mdd = maxDrawdown(pts);
+    $("mddLabel").textContent = `최대 낙폭(MDD) ${(mdd * 100).toFixed(2)}%`;
+    if (pts.length < 2) {
+      svg.innerHTML = `<text x="${w / 2}" y="${h / 2}" text-anchor="middle" fill="var(--muted)" font-size="13">거래를 시작하면 자산 추이가 그려져요</text>`;
+      return;
+    }
+    const vs = pts.map(p => p.v).concat(START_CASH);
+    let lo = Math.min(...vs), hi = Math.max(...vs);
+    if (hi - lo < START_CASH * 0.002) { lo -= START_CASH * 0.001; hi += START_CASH * 0.001; }
+    const t0 = pts[0].t, t1 = pts[pts.length - 1].t || t0 + 1;
+    const x = t => pad + ((t - t0) / Math.max(t1 - t0, 1)) * (w - pad * 2);
+    const y = v => pad + (1 - (v - lo) / (hi - lo)) * (h - pad * 2);
+    const line = pts.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join("");
+    const last = pts[pts.length - 1].v;
+    const color = last >= START_CASH ? "var(--up)" : "var(--down)";
+    const baseY = y(START_CASH).toFixed(1);
+    svg.innerHTML = `
+      <line x1="${pad}" x2="${w - pad}" y1="${baseY}" y2="${baseY}" stroke="var(--border)" stroke-dasharray="4 4"/>
+      <text x="${w - pad}" y="${Math.max(+baseY - 4, 12)}" text-anchor="end" fill="var(--muted)" font-size="11">시작 1억</text>
+      <path d="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`;
+  }
+
+  function renderMarkets() {
+    $("srcLabel").textContent = source === "live" ? "업비트 실시간" : source === "sim" ? "시뮬레이션" : "연결 중…";
+    $("simBanner").classList.toggle("hidden", source !== "sim");
+    $("marketBody").innerHTML = COINS.map(c => {
+      const p = prices[c.market];
+      if (!p) return `<tr><td>${c.name}</td><td colspan="3" class="muted">-</td></tr>`;
+      return `<tr class="market-row ${c.market === selected ? "selected" : ""}" data-m="${c.market}">
+        <td><div class="coin-name">${c.name}</div><div class="coin-sym">${sym(c.market)}</div></td>
+        <td class="num ${cls(p.change)}">${fmtPrice(p.price)}</td>
+        <td class="num ${cls(p.change)}">${fmtPct(p.change)}</td>
+        <td class="num muted hide-sm">${fmtBig(p.volume)}</td>
+      </tr>`;
+    }).join("");
+  }
+
+  function parseAmount() {
+    const v = parseFloat($("amount").value.replace(/,/g, ""));
+    return isFinite(v) ? v : 0;
+  }
+
+  function renderOrder() {
+    const u = user();
+    const c = COIN_BY_MARKET[selected];
+    const p = prices[selected];
+    $("oName").textContent = c.name;
+    $("oSym").textContent = sym(selected);
+    $("oPrice").innerHTML = p ? `<span class="${cls(p.change)}">${fmtPrice(p.price)}</span>` : "-";
+    $("tabBuy").className = side === "buy" ? "active-buy" : "";
+    $("tabSell").className = side === "sell" ? "active-sell" : "";
+    const btn = $("submitBtn");
+    btn.className = "submit " + side;
+    btn.textContent = side === "buy" ? "매수" : "매도";
+    const amt = parseAmount();
+    const held = u.holdings[selected]?.qty || 0;
+    if (side === "buy") {
+      $("amountLabel").textContent = "주문 금액 (원)";
+      $("availLabel").textContent = "주문 가능";
+      $("avail").textContent = fmtKRW(u.cash);
+      $("estLabel").textContent = "예상 수량";
+      $("est").textContent = p && amt ? fmtQty(amt / p.price) + " " + sym(selected) : "-";
+      $("fee").textContent = amt ? fmtKRW(amt * FEE_RATE) : "-";
+    } else {
+      $("amountLabel").textContent = `매도 수량 (${sym(selected)})`;
+      $("availLabel").textContent = "보유 수량";
+      $("avail").textContent = fmtQty(held) + " " + sym(selected);
+      $("estLabel").textContent = "예상 금액";
+      $("est").textContent = p && amt ? fmtKRW(amt * p.price) : "-";
+      $("fee").textContent = p && amt ? fmtKRW(amt * p.price * FEE_RATE) : "-";
+    }
+    btn.disabled = !p;
+  }
+
+  function renderHoldings() {
+    const u = user();
+    const rows = Object.entries(u.holdings);
+    if (!rows.length) {
+      $("tab-holdings").innerHTML = `<div class="empty">아직 보유한 코인이 없어요. 위 시세표에서 코인을 골라 매수해 보세요.</div>`;
+      return;
+    }
+    $("tab-holdings").innerHTML = `<div class="table-scroll"><table>
+      <thead><tr><th>코인</th><th>보유 수량</th><th class="hide-sm">평균 매수가</th><th>평가 금액</th><th>수익률</th></tr></thead>
+      <tbody>${rows.map(([m, h]) => {
+        const p = prices[m]?.price || 0;
+        const v = h.qty * p;
+        const r = h.cost ? v / h.cost - 1 : 0;
+        return `<tr class="market-row" data-m="${m}">
+          <td><div class="coin-name">${COIN_BY_MARKET[m]?.name || m}</div><div class="coin-sym">${sym(m)}</div></td>
+          <td class="num">${fmtQty(h.qty)}</td>
+          <td class="num hide-sm">${fmtPrice(h.cost / h.qty)}</td>
+          <td class="num">${fmtKRW(v)}</td>
+          <td class="num ${cls(r)}">${fmtPct(r)}</td>
+        </tr>`;
+      }).join("")}</tbody></table></div>`;
+  }
+
+  function renderTrades() {
+    const u = user();
+    if (!u.trades.length) {
+      $("tab-trades").innerHTML = `<div class="empty">거래 내역이 없어요. 모든 거래는 기록되고 수정·삭제할 수 없어요.</div>`;
+      return;
+    }
+    $("tab-trades").innerHTML = `<div class="table-scroll"><table>
+      <thead><tr><th>시각</th><th>구분</th><th>코인</th><th>체결가</th><th class="hide-sm">수량</th><th>금액</th><th class="hide-sm">실현손익</th></tr></thead>
+      <tbody>${u.trades.slice().reverse().map(t => `<tr>
+        <td class="num muted">${fmtTime(t.at)}</td>
+        <td class="${t.side === "buy" ? "side-buy" : "side-sell"}">${t.side === "buy" ? "매수" : "매도"}${t.source === "sim" ? '<span class="tag">시뮬</span>' : ""}</td>
+        <td>${sym(t.market)}</td>
+        <td class="num">${fmtPrice(t.price)}</td>
+        <td class="num hide-sm">${fmtQty(t.qty)}</td>
+        <td class="num">${fmtKRW(t.amount)}</td>
+        <td class="num hide-sm ${t.pnl != null ? cls(t.pnl) : ""}">${t.pnl != null ? (t.pnl >= 0 ? "+" : "") + fmtKRW(t.pnl) : "-"}</td>
+      </tr>`).join("")}</tbody></table></div>`;
+  }
+
+  function renderRanking() {
+    const list = Object.values(db.users).map(u => {
+      const total = totalValue(u);
+      const sells = u.trades.filter(t => t.side === "sell");
+      const wins = sells.filter(t => t.pnl > 0).length;
+      return {
+        u, total, ret: total / START_CASH - 1,
+        mdd: maxDrawdown([...u.history, { t: Date.now(), v: total }]),
+        count: u.trades.length,
+        winRate: sells.length ? wins / sells.length : null,
+      };
+    }).sort((a, b) => b.ret - a.ret);
+    $("tab-ranking").innerHTML = `<div class="table-scroll"><table>
+      <thead><tr><th>순위</th><th style="text-align:left">닉네임</th><th>수익률</th><th class="hide-sm">총 자산</th><th>MDD</th><th class="hide-sm">승률</th><th class="hide-sm">거래</th></tr></thead>
+      <tbody>${list.map((r, i) => `<tr>
+        <td class="rank-no">${i + 1}</td>
+        <td style="text-align:left">${esc(r.u.name)}${r.u.demo ? '<span class="tag">예시</span>' : ""}${r.u.name === db.current ? '<span class="tag me">나</span>' : ""}</td>
+        <td class="num ${cls(r.ret)}">${fmtPct(r.ret)}</td>
+        <td class="num hide-sm">${fmtKRW(r.total)}</td>
+        <td class="num down">${fmtMdd(r.mdd)}</td>
+        <td class="num hide-sm">${r.winRate == null ? "-" : (r.winRate * 100).toFixed(0) + "%"}</td>
+        <td class="num hide-sm">${r.count}</td>
+      </tr>`).join("")}</tbody></table></div>
+      <div class="notice">시안에서는 이 기기의 계정끼리만 비교해요. "예시" 계정은 설명용 가상 계정입니다.
+      정식 버전에서는 전체 회원 랭킹, 인증 고수 배지, 시즌제가 들어가요.</div>`;
+  }
+
+  function renderTabs() {
+    for (const b of $("tabs").querySelectorAll("button")) b.classList.toggle("active", b.dataset.tab === activeTab);
+    for (const t of ["holdings", "trades", "ranking"]) $("tab-" + t).classList.toggle("hidden", t !== activeTab);
+    if (activeTab === "holdings") renderHoldings();
+    if (activeTab === "trades") renderTrades();
+    if (activeTab === "ranking") renderRanking();
+  }
+
+  function renderAll() {
+    if (!user()) return;
+    renderMarkets();
+    renderSummary();
+    renderChart();
+    renderOrder();
+    renderTabs();
+  }
+
+  function setMsg(text, ok) {
+    const el = $("orderMsg");
+    el.textContent = text;
+    el.style.color = ok ? "var(--accent)" : "var(--up)";
+  }
+
+  // ---------- Events ----------
+  $("loginForm").addEventListener("submit", e => { e.preventDefault(); login($("nickname").value); });
+  $("existingList").addEventListener("click", e => { const n = e.target.dataset?.name; if (n) login(n); });
+  $("logoutBtn").addEventListener("click", () => { db.current = null; save(); showLogin(); });
+
+  function selectMarket(m) {
+    if (!COIN_BY_MARKET[m]) return;
+    selected = m;
+    $("amount").value = "";
+    setMsg("");
+    renderMarkets();
+    renderOrder();
+  }
+  $("marketBody").addEventListener("click", e => { const r = e.target.closest("[data-m]"); if (r) selectMarket(r.dataset.m); });
+  $("tab-holdings").addEventListener("click", e => {
+    const r = e.target.closest("[data-m]");
+    if (r) { selectMarket(r.dataset.m); side = "sell"; renderOrder(); }
+  });
+
+  $("tabBuy").addEventListener("click", () => { side = "buy"; $("amount").value = ""; setMsg(""); renderOrder(); });
+  $("tabSell").addEventListener("click", () => { side = "sell"; $("amount").value = ""; setMsg(""); renderOrder(); });
+  $("amount").addEventListener("input", renderOrder);
+
+  $("pctBtns").addEventListener("click", e => {
+    const p = parseFloat(e.target.dataset?.p);
+    if (!p) return;
+    const u = user();
+    if (side === "buy") {
+      $("amount").value = Math.floor((u.cash * p) / (1 + FEE_RATE)).toLocaleString("ko-KR");
+    } else {
+      const held = u.holdings[selected]?.qty || 0;
+      $("amount").value = p === 1 ? String(held) : String(+(held * p).toFixed(8));
+    }
+    renderOrder();
+  });
+
+  $("submitBtn").addEventListener("click", () => {
+    const u = user();
+    const amt = parseAmount();
+    const err = side === "buy" ? buy(u, selected, amt) : sell(u, selected, amt);
+    if (err) { setMsg(err, false); return; }
+    const t = u.trades[u.trades.length - 1];
+    setMsg(`${sym(selected)} ${fmtQty(t.qty)}개 ${side === "buy" ? "매수" : "매도"} 체결 (${fmtPrice(t.price)}원)`, true);
+    $("amount").value = "";
+    renderAll();
+  });
+
+  $("tabs").addEventListener("click", e => {
+    const t = e.target.dataset?.tab;
+    if (t) { activeTab = t; renderTabs(); }
+  });
+
+  window.addEventListener("resize", () => { if (user()) renderChart(); });
+
+  // ---------- Loop ----------
+  async function tick() {
+    await refreshPrices();
+    ensureDemoAccounts();
+    for (const u of Object.values(db.users)) snapshot(u);
+    save();
+    if (user()) {
+      renderMarkets();
+      renderSummary();
+      renderChart();
+      renderOrder();
+      if (activeTab !== "trades") renderTabs();
+    }
+  }
+
+  if (db.current && db.users[db.current]) showApp(); else showLogin();
+  tick();
+  setInterval(tick, POLL_MS);
+})();
+</script>
+</body>
+</html>
