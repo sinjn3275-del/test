@@ -333,7 +333,7 @@
       <div id="stockPane" class="stock-pane hidden">
         <div class="stock-tools">
           <input class="input" id="stockSearch" placeholder="종목명 또는 종목코드 검색 (예: 삼성전자, 005930)" autocomplete="off">
-          <div class="stock-note" id="stockNote">국내주식은 실시간이 아니라 <b>하루 한 번 확정되는 가격</b>으로 사고팔아요. 주문 결과는 <b>다음 영업일 오후</b>에 나와요.</div>
+          <div class="stock-note" id="stockNote">국내주식은 실시간이 아니라 <b>하루 한 번 확정되는 가격</b>으로 사고팔아요. 가격은 그날 정해지지만, 시세 자료가 하루 늦게 들어와서 <b>앱에는 다음 영업일 오후</b>에 반영돼요.</div>
         </div>
         <div class="table-scroll stock-scroll">
           <table>
@@ -381,7 +381,7 @@
         <div><span id="estLabel">예상 수량</span><span class="num" id="est">-</span></div>
         <div><span id="feeLabel">수수료</span><span class="num" id="fee">-</span></div>
         <div id="schedRow" class="hidden"><span>가격 기준</span><span id="sched">-</span></div>
-        <div id="resultRow" class="hidden"><span>결과 확인</span><span id="resultDate">-</span></div>
+        <div id="resultRow" class="hidden"><span>앱 반영</span><span id="resultDate">-</span></div>
       </div>
       <button class="submit buy" id="submitBtn">매수</button>
       <div class="msg" id="orderMsg"></div>
@@ -885,7 +885,7 @@
       $("amountLabel").textContent = "주문 금액 (원)";
       $("availLabel").textContent = "주문 가능";
       $("avail").textContent = fmtKRW(me.cash);
-      $("estLabel").textContent = "예상 수량 (최근 종가 기준)";
+      $("estLabel").textContent = "예상 수량 (최근 마감 가격 기준)";
       $("est").textContent = p && amt ? Math.floor(amt / p.price).toLocaleString("ko-KR") + "주" : "-";
       $("feeLabel").textContent = "수수료 (0.015%)";
       $("fee").textContent = amt ? fmtKRW(amt * STOCK_FEE) : "-";
@@ -893,7 +893,7 @@
       $("amountLabel").textContent = "매도 수량 (주)";
       $("availLabel").textContent = "매도 가능";
       $("avail").textContent = avail.toLocaleString("ko-KR") + "주";
-      $("estLabel").textContent = "예상 금액 (최근 종가 기준)";
+      $("estLabel").textContent = "예상 금액 (최근 마감 가격 기준)";
       $("est").textContent = p && amt ? fmtKRW(Math.floor(amt) * p.price) : "-";
       $("feeLabel").textContent = "수수료+세금 (0.215%)";
       $("fee").textContent = p && amt ? fmtKRW(Math.floor(amt) * p.price * (STOCK_FEE + STOCK_TAX)) : "-";
@@ -915,7 +915,7 @@
             </div>
             <div><span class="${o.side === "buy" ? "side-buy" : "side-sell"}">${o.side === "buy" ? "사기" : "팔기"}</span>
               <span class="num">${what}</span> <span class="tag">${ORDER_TYPE_LABEL[o.type]}</span></div>
-            <div class="steps"><span class="step done">접수</span><span class="step">${schedText(o.type, elig)}</span><span class="step">결과 ${resultText(o.type, elig)}</span></div>
+            <div class="steps"><span class="step done">접수</span><span class="step">${schedText(o.type, elig)}</span><span class="step">앱 반영 ${resultText(o.type, elig)}</span></div>
           </div>`;
         }).join("")}</div>`;
     }
@@ -1132,8 +1132,8 @@
         : side === "buy" ? fmtKRW(d.amount) + "어치 사기" : Number(d.qty).toLocaleString("ko-KR") + "주 팔기";
       const elig = isoToYmd(d.eligible);
       setMsg(d.type === "limit"
-        ? `${d.name} ${what} 예약됐어요. ${schedText(d.type, elig)} 동안 기다리고, 결과는 ${resultText(d.type, elig)}에 확인할 수 있어요.`
-        : `${d.name} ${what} 예약됐어요. ${schedText(d.type, elig)}으로 거래되고, 결과는 ${resultText(d.type, elig)}에 확인할 수 있어요.`, true);
+        ? `${d.name} ${what} 예약됐어요. ${schedText(d.type, elig)} 동안 기다리고, 앱에는 ${resultText(d.type, elig)}에 반영돼요.`
+        : `${d.name} ${what} 예약됐어요. ${schedText(d.type, elig)}으로 거래되고, 앱에는 ${resultText(d.type, elig)}에 반영돼요.`, true);
     } else {
       setMsg(`${sym(selected)} ${fmtQty(Number(d.qty))}개 ${side === "buy" ? "매수" : "매도"} 체결 (${fmtPrice(Number(d.price))}원)`, true);
     }
