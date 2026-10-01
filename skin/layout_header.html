@@ -1,0 +1,71 @@
+<!-- 지구마켓 공통 머리말 (기존 모아스튜디오 헤더는 아래 CSS로 숨김, 스크립트 호환을 위해 import는 유지) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body > .top-banner, body > header.header, body > .all-cate-bg {display:none !important}
+.g9h, .g9h *{box-sizing:border-box}
+.g9h{font-family:'IBM Plex Sans KR',sans-serif;position:relative;z-index:100}
+.g9h a{color:#123C4D;text-decoration:none}
+.g9h a:hover{color:#0A2733}
+.g9h-top{background:#123C4D;color:#FFFFFF;font-size:14px;text-align:center;padding:10px 16px}
+.g9h-top strong{color:#9BD13C}
+.g9h-bar{background:#FFFFFF;border-bottom:1px solid #E2E5DC;position:relative}
+.g9h-wrap{max-width:1200px;margin:0 auto;padding:0 24px;height:72px;display:flex;align-items:center;justify-content:space-between;gap:24px}
+.g9h-logo{display:flex;align-items:center;gap:10px}
+.g9h-word{display:flex;flex-direction:column;line-height:1.05}
+.g9h-word b{font-size:24px;font-weight:700;letter-spacing:-0.02em;color:#123C4D}
+.g9h-word b span{color:#4E7F12}
+.g9h-word small{font-size:11px;font-weight:600;letter-spacing:0.16em;color:#5B6B72;padding-top:3px}
+.g9h-nav{display:flex;gap:28px;font-size:15px;font-weight:500}
+.g9h-nav a{display:flex;align-items:center;gap:6px}
+.g9h-util{display:flex;align-items:center;gap:14px;font-size:14px;font-weight:500}
+.g9h-cart{display:inline-flex;align-items:center;gap:6px}
+.g9h-count{display:inline-block;min-width:20px;height:20px;line-height:20px;border-radius:999px;background:#9BD13C;color:#13232B;font-size:12px;font-weight:700;text-align:center;padding:0 6px}
+.g9h-btn{width:44px;height:44px;border:1px solid #E2E5DC;border-radius:10px;background:#FFFFFF;display:none;align-items:center;justify-content:center;cursor:pointer}
+.g9h-nav.g9h-open{display:flex !important;position:absolute;top:100%;left:0;right:0;flex-direction:column;gap:0;background:#FFFFFF;border-bottom:1px solid #E2E5DC;padding:8px 20px}
+.g9h-mobile-only{display:none !important}.g9h-nav.g9h-open .g9h-mobile-only{display:flex !important}
+.g9h-nav.g9h-open a{padding:14px 0;border-bottom:1px solid #EEF1E8}
+@media (max-width:1000px){.g9h-nav{display:none}.g9h-btn{display:flex}.g9h-hide-m{display:none !important}}
+</style>
+<div class="g9h">
+<div class="g9h-top">첫 박스를 보내면 바로 <strong>스텐 등급</strong>으로 올라가요</div>
+<div class="g9h-bar">
+<div class="g9h-wrap">
+<a href="/" class="g9h-logo" aria-label="지구마켓 홈">
+<svg width="44" height="44" viewBox="0 0 64 64" aria-hidden="true">
+<path d="M32 14 C32 10 32 8 32 6" stroke="#4E7F12" stroke-width="3" stroke-linecap="round"></path>
+<path d="M32 9 C26 2 19 4 18 7 C22 11 28 11 32 9 Z" fill="#7DB728"></path>
+<path d="M32 8 C37 0 45 1 47 4 C43 10 37 10 32 8 Z" fill="#9BD13C"></path>
+<circle cx="32" cy="37" r="24" fill="#3F8FB3"></circle>
+<path d="M14 30 C18 24 27 23 30 27 C32 31 27 34 28 38 C29 42 23 44 20 42 C16 40 17 36 13 35 C11 34 12 32 14 30 Z" fill="#7DB728"></path>
+<path d="M38 18 C44 17 51 21 53 26 C50 27 46 26 44 29 C41 31 38 29 38 26 C38 23 36 20 38 18 Z" fill="#9BD13C"></path>
+<path d="M40 46 C44 43 51 44 54 41 C54 47 50 54 43 57 C40 54 37 49 40 46 Z" fill="#7DB728"></path>
+<circle cx="27" cy="38" r="2.6" fill="#13232B"></circle>
+<circle cx="37" cy="38" r="2.6" fill="#13232B"></circle>
+<path d="M28 44 C30 47 34 47 36 44" fill="none" stroke="#13232B" stroke-width="2.4" stroke-linecap="round"></path>
+</svg>
+<span class="g9h-word"><b>지구<span>마켓</span></b><small>G9 MARKET</small></span>
+</a>
+<nav class="g9h-nav" id="g9hNav">
+<a href="/#send">재활용품 보내기</a>
+<a href="/#rescue">농가 구하기</a>
+<a href="/#rescue">재고 구하기</a>
+<a href="/#rescue">셀러 구하기</a>
+<a href="/#circle"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>써클</a>
+<a href="/member/login.html" class="g9h-mobile-only" module="Layout_statelogoff">로그인</a>
+</nav>
+<div class="g9h-util">
+<span module="Layout_statelogoff" class="g9h-hide-m"><a href="/member/login.html">로그인</a></span>
+<span module="Layout_statelogon" class="g9h-hide-m"><a href="/myshop/index.html">마이페이지</a> · <a href="{$action_logout}">로그아웃</a></span>
+<a module="Layout_stateLogoff" href="/order/basket.html" class="g9h-cart">장바구니 <span class="g9h-count">{$basket_count}</span></a>
+<a module="Layout_stateLogon" href="/order/basket.html" class="g9h-cart">장바구니 <span class="g9h-count">{$basket_count}</span></a>
+<button type="button" class="g9h-btn" id="g9hBtn" aria-label="메뉴 열기" aria-expanded="false"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#123C4D" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg></button>
+</div>
+</div>
+</div>
+</div>
+<script>
+(function(){var b=document.getElementById('g9hBtn'),n=document.getElementById('g9hNav');if(!b||!n)return;
+b.addEventListener('click',function(){var o=n.classList.toggle('g9h-open');b.setAttribute('aria-expanded',o?'true':'false');});})();
+</script>
