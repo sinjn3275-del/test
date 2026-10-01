@@ -2,9 +2,10 @@ name: Update stock closing prices
 
 on:
   schedule:
-    # 공공데이터는 거래일 다음 영업일 오후에 올라오므로 화~토 KST 14:10, 18:10에 확인
-    - cron: "10 5 * * 2-6"
-    - cron: "10 9 * * 2-6"
+    # 공공데이터는 거래일 다음 영업일 오후에 올라오므로 월~토 KST 14:10, 18:10에 확인
+    # (금요일 시세는 월요일에 올라와요)
+    - cron: "10 5 * * 1-6"
+    - cron: "10 9 * * 1-6"
   workflow_dispatch:
 
 permissions:

@@ -53,7 +53,7 @@ API 키가 화면 코드에 노출되지 않도록, GitHub Actions가 종가를 
    - Name: `DATA_GO_KR_KEY`, Secret: 복사한 키
 4. Actions 탭 → **Update stock closing prices** → **Run workflow**로 첫 수집 실행
 
-이후 화~토 오후(KST 14:10, 18:10)에 자동으로 전 거래일 시세를 받아 커밋하고 Supabase에 반영합니다.
+이후 월~토 오후(KST 14:10, 18:10)에 자동으로 전 거래일 시세를 받아 커밋하고 Supabase에 반영합니다.
 파일은 최근 30거래일, 데이터베이스는 최근 40일치만 보관해요.
 
 로컬 실행: `DATA_GO_KR_KEY=<키> node scripts/fetch-stocks.mjs`
