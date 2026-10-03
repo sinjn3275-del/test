@@ -73,6 +73,8 @@
   .goal .bar i { display: block; height: 100%; background: linear-gradient(90deg, #c99a3b, var(--gold)); }
 
   /* Coins */
+  .search { width: 100%; background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 12px; padding: 11px 14px; font-size: 15px; }
+  .search:focus { outline: 2px solid var(--gold); outline-offset: -1px; }
   .coin-list { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
   .coin { display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 11px 12px; }
   .coin:last-child { border-bottom: 0; }
@@ -187,8 +189,10 @@
 
   <section class="view" id="view-coin">
     <h2>코인 거래소 <span class="hint" style="font-weight:400">· 업비트 실시간 시세</span></h2>
+    <input class="search" id="coinSearch" placeholder="코인 이름 검색 (예: 비트, 도지, SOL)" autocomplete="off">
+    <div class="hint" id="coinCount" style="margin:8px 2px">불러오는 중</div>
     <div class="coin-list" id="coinList"></div>
-    <p class="hint" style="margin-top:10px">코인을 눌러서 사고팔 수 있어요. 수수료는 0.05%예요.</p>
+    <p class="hint" style="margin-top:10px">코인을 눌러서 사고팔 수 있어요. 수수료는 0.05%예요. 내가 가진 코인이 맨 위에 와요.</p>
   </section>
 
   <section class="view" id="view-shop">
@@ -263,7 +267,8 @@
   const POLL_MS = 3_000;
   const STORE_KEY = "flexcity.v1";
 
-  const COINS = [
+  // Shown until the full KRW market list loads (and if Upbit is unreachable).
+  const FALLBACK_COINS = [
     { market: "KRW-BTC", name: "비트코인", color: "#f7931a" },
     { market: "KRW-ETH", name: "이더리움", color: "#627eea" },
     { market: "KRW-XRP", name: "리플", color: "#23292f" },
@@ -275,8 +280,28 @@
     { market: "KRW-DOT", name: "폴카닷", color: "#e6007a" },
     { market: "KRW-TRX", name: "트론", color: "#c4302b" },
   ];
-  const COIN_BY_MARKET = Object.fromEntries(COINS.map(c => [c.market, c]));
   const sym = m => m.replace("KRW-", "");
+  const KNOWN_COLORS = Object.fromEntries(FALLBACK_COINS.map(c => [c.market, c.color]));
+  const PALETTE = ["#f7931a", "#627eea", "#9945ff", "#e84142", "#2a5ada", "#e6007a", "#14b8a6", "#f59e0b", "#0ea5e9", "#84cc16", "#ec4899", "#6366f1"];
+  const colorFor = m => KNOWN_COLORS[m] || PALETTE[[...m].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7) % PALETTE.length];
+  let COINS = FALLBACK_COINS;
+  let COIN_BY_MARKET = Object.fromEntries(COINS.map(c => [c.market, c]));
+  const coinName = m => COIN_BY_MARKET[m]?.name || sym(m);
+  const iconText = m => sym(m).slice(0, 4);
+  let listDirty = true, sortedWithVolume = false;
+
+  // Every coin in Upbit's KRW market (about 200+), with Korean names.
+  async function loadMarkets() {
+    try {
+      const res = await fetch("https://api.upbit.com/v1/market/all?isDetails=false");
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const list = (await res.json()).filter(x => x.market?.startsWith("KRW-") && x.korean_name);
+      if (!list.length) return;
+      COINS = list.map(x => ({ market: x.market, name: x.korean_name, color: colorFor(x.market) }));
+      COIN_BY_MARKET = Object.fromEntries(COINS.map(c => [c.market, c]));
+      listDirty = true; sortedWithVolume = false;
+    } catch (e) { /* keep the fallback list */ }
+  }
 
   const CATS = [
     { id: "car", name: "자동차" },
@@ -354,13 +379,15 @@
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 4000);
     try {
+      // Only listed markets: one delisted code would make Upbit reject the whole request.
       const res = await fetch("https://api.upbit.com/v1/ticker?markets=" + COINS.map(c => c.market).join(","), { signal: ctrl.signal });
       if (!res.ok) throw new Error("HTTP " + res.status);
       for (const t of await res.json()) {
         const prev = prices[t.market]?.price;
-        prices[t.market] = { price: t.trade_price, change: t.signed_change_rate, prev };
+        prices[t.market] = { price: t.trade_price, change: t.signed_change_rate, volume: t.acc_trade_price_24h, prev };
       }
       live = true; fails = 0;
+      if (!sortedWithVolume) { sortedWithVolume = true; listDirty = true; }
     } catch (e) {
       if (++fails >= 3) live = false;
     } finally { clearTimeout(timer); }
@@ -601,13 +628,21 @@
 
   function renderCoins() {
     const list = $("coinList");
-    if (!list.children.length) {
-      list.innerHTML = COINS.map(c => `<button class="coin" data-m="${c.market}">
-        <div class="cicon" style="background:${c.color}">${sym(c.market)}</div>
-        <div><div class="nm">${c.name}</div><div class="mine"></div></div>
-        <div class="px"><div class="p">-</div><div class="c flat">-</div></div></button>`).join("");
+    if (listDirty) {
+      // Re-sorted only on load or search, so rows don't jump while tapping.
+      listDirty = false;
+      const q = $("coinSearch").value.trim().toLowerCase();
+      const shown = COINS.filter(c => !q || c.name.toLowerCase().includes(q) || sym(c.market).toLowerCase().includes(q))
+        .sort((a, b) => (state.coins[b.market] ? 1 : 0) - (state.coins[a.market] ? 1 : 0) || (prices[b.market]?.volume || 0) - (prices[a.market]?.volume || 0));
+      $("coinCount").textContent = `원화마켓 ${COINS.length}개` + (q ? ` 중 ${shown.length}개` : "") + " · 거래대금순";
+      list.innerHTML = shown.length ? shown.map(c => `<button class="coin" data-m="${c.market}">
+        <div class="cicon" style="background:${c.color};${iconText(c.market).length > 3 ? "font-size:9px" : ""}">${esc(iconText(c.market))}</div>
+        <div><div class="nm">${esc(c.name)}</div><div class="mine"></div></div>
+        <div class="px"><div class="p">-</div><div class="c flat">-</div></div></button>`).join("")
+        : `<div class="empty">"${esc(q)}" 코인이 없어요.</div>`;
     }
     for (const el of list.children) {
+      if (!el.dataset.m) continue;
       const m = el.dataset.m, p = prices[m], h = state.coins[m];
       el.querySelector(".mine").textContent = h ? `보유 ${fmtQty(h.qty)} ${sym(m)}` : sym(m);
       if (!p) continue;
@@ -669,7 +704,7 @@
     const coins = Object.entries(state.coins);
     $("walletCoins").innerHTML = coins.length ? coins.map(([m, h]) => {
       const p = prices[m]?.price, val = p ? h.qty * p : h.cost, r = val / h.cost - 1;
-      return `<div class="row"><div class="l">${COIN_BY_MARKET[m].name}<br><small>${fmtQty(h.qty)} ${sym(m)}</small></div>
+      return `<div class="row"><div class="l">${esc(coinName(m))}<br><small>${fmtQty(h.qty)} ${sym(m)}</small></div>
         <div class="r">${won(val)}<small class="${cls(r)}">${p ? fmtPct(r) : "시세 대기"} (${r >= 0 ? "+" : "-"}${wonShort(Math.abs(val - h.cost))}원)</small></div></div>`;
     }).join("") : `<div class="empty">아직 코인이 없어요. 코인 탭에서 사보세요.</div>`;
     const items = state.items.map(id => ITEM_BY_ID[id]).filter(Boolean).sort((a, b) => b.price - a.price);
@@ -751,6 +786,7 @@
   }
   function closeSheet() { sheetMarket = null; $("backdrop").classList.remove("on"); $("sheet").classList.remove("on"); }
   $("backdrop").addEventListener("click", closeSheet);
+  $("coinSearch").addEventListener("input", () => { listDirty = true; renderCoins(); });
   $("coinList").addEventListener("click", e => { const b = e.target.closest("[data-m]"); if (b) openSheet(b.dataset.m); });
   document.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => { side = b.dataset.side; $("sAmount").value = ""; renderSheet(); }));
   $("sAmount").addEventListener("input", e => {
@@ -767,10 +803,10 @@
   });
 
   function renderSheet(full = true) {
-    const m = sheetMarket, c = COIN_BY_MARKET[m], p = prices[m], h = state.coins[m];
+    const m = sheetMarket, p = prices[m], h = state.coins[m];
     if (full) {
-      $("sIcon").style.background = c.color; $("sIcon").textContent = sym(m);
-      $("sName").textContent = c.name;
+      $("sIcon").style.background = colorFor(m); $("sIcon").textContent = iconText(m);
+      $("sName").textContent = coinName(m);
       document.querySelectorAll(".seg button").forEach(b => { b.classList.toggle("on", b.dataset.side === side); });
       $("sLabel").textContent = side === "buy" ? "얼마어치 살까요? (원)" : `몇 개 팔까요? (${sym(m)})`;
       $("sQuick").innerHTML = [[.1, "10%"], [.25, "25%"], [.5, "50%"], [1, "최대"]].map(([f, l]) => `<button data-f="${f}">${l}</button>`).join("");
@@ -805,7 +841,7 @@
   $("sSubmit").addEventListener("click", () => {
     const m = sheetMarket, p = prices[m]?.price, amt = parseNum($("sAmount").value);
     if (!p || !amt) return;
-    const name = COIN_BY_MARKET[m].name;
+    const name = coinName(m);
     if (side === "buy") {
       if (amt > state.cash || amt < MIN_ORDER) return;
       const qty = amt * (1 - COIN_FEE) / p;
@@ -834,7 +870,7 @@
   });
 
   renderAll();
-  poll();
+  loadMarkets().then(poll);
   setInterval(poll, POLL_MS);
   setInterval(() => { if ($("view-world").classList.contains("on")) renderWorld(); }, 60_000);
 })();
