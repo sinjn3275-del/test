@@ -65,6 +65,9 @@
   /* World */
   .scene { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); background: #1b2a4a; }
   .scene svg { display: block; width: 100%; height: auto; }
+  .movebar { margin-top: 8px; font-size: 12.5px; color: var(--muted); text-align: center; min-height: 30px; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 10px; padding: 4px 8px; }
+  .movebar.on { background: rgba(231, 194, 106, .14); color: var(--text); }
+  .movebar button { border: 1px solid var(--line); background: var(--panel-2); border-radius: 8px; padding: 4px 10px; font-size: 12px; }
   .owned-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
   .owned-strip .slot { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px 6px; text-align: center; font-size: 11.5px; color: var(--muted); min-width: 0; }
   .owned-strip .slot b { display: block; color: var(--text); font-size: 12px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -183,6 +186,7 @@
 <main class="wrap">
   <section class="view on" id="view-world">
     <div class="scene" id="scene"></div>
+    <div class="movebar" id="moveBar"></div>
     <div class="owned-strip" id="ownedStrip"></div>
     <div class="goal" id="goal"></div>
   </section>
@@ -360,7 +364,7 @@
   const cls = r => r > 0 ? "up" : r < 0 ? "down" : "flat";
 
   // ---------- State (saved in this browser) ----------
-  const fresh = () => ({ cash: START_CASH, coins: {}, items: [], log: [], created: Date.now() });
+  const fresh = () => ({ cash: START_CASH, coins: {}, items: [], place: {}, log: [], created: Date.now() });
   function load() {
     try {
       const s = JSON.parse(localStorage.getItem(STORE_KEY));
@@ -572,37 +576,195 @@
     </g>`;
   }
 
-  function sceneSVG() {
+  // ---------- Isometric town ----------
+  // 7x7 tiles: column i=3 is a road, row j=6 is the river, everything else is my land.
+  const N = 7, TW = 96, TH = 48, ROAD_I = 3, RIVER_J = N - 1;
+  const terrain = (i, j) => j === RIVER_J ? "water" : i === ROAD_I ? "road" : "land";
+  const tileKey = (i, j) => i + "," + j;
+  const parseKey = k => k.split(",").map(Number);
+  const placeable = item => item && item.cat !== "watch";
+  const needs = item => item.id === "sp-yacht" ? "water" : "land";
+  const AVATAR_TILE = [ROAD_I, 4];
+
+  // Ground point for tile-local coords (a along i, b along j, both in tile units) at height z.
+  const pt = (cx, cy, a, b, z = 0) => [cx + (a - b) * TW / 2, cy + (a + b) * TH / 2 - z];
+  const poly = (pts, fill, extra = "") => `<polygon points="${pts.map(p => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ")}" fill="${fill}" ${extra}/>`;
+  function shade(hex, f) {
+    const n = parseInt(hex.slice(1), 16), ch = s => Math.max(0, Math.min(255, Math.round(((n >> s) & 255) * f)));
+    return "#" + ((1 << 24) + (ch(16) << 16) + (ch(8) << 8) + ch(0)).toString(16).slice(1);
+  }
+  // Box with footprint w x d centered at (oa, ob), from z0 up to z0 + h.
+  function box(cx, cy, w, d, h, color, { z0 = 0, oa = 0, ob = 0 } = {}) {
+    const A0 = oa - w / 2, A1 = oa + w / 2, B0 = ob - d / 2, B1 = ob + d / 2, z1 = z0 + h;
+    return poly([pt(cx, cy, A0, B1, z0), pt(cx, cy, A1, B1, z0), pt(cx, cy, A1, B1, z1), pt(cx, cy, A0, B1, z1)], shade(color, .82)) +
+      poly([pt(cx, cy, A1, B0, z0), pt(cx, cy, A1, B1, z0), pt(cx, cy, A1, B1, z1), pt(cx, cy, A1, B0, z1)], shade(color, .64)) +
+      poly([pt(cx, cy, A0, B0, z1), pt(cx, cy, A1, B0, z1), pt(cx, cy, A1, B1, z1), pt(cx, cy, A0, B1, z1)], shade(color, 1.08));
+  }
+  // Window grid on the two visible faces of a box.
+  function boxWindows(cx, cy, w, d, z0, z1, cols, rows, night, seed = 0, { oa = 0, ob = 0, day = "#a9d6e5" } = {}) {
+    let s = "";
+    const cell = (face, c, r) => {
+      const lit = night && (r * 7 + c * 3 + seed + face) % 3 !== 0;
+      return night ? (lit ? "#ffd27a" : "#2b3550") : day;
+    };
+    const zs = (z1 - z0) / rows;
+    for (let r = 0; r < rows; r++) {
+      const za = z0 + r * zs + zs * .28, zb = za + zs * .5;
+      for (let c = 0; c < cols; c++) {
+        const fa = (c + .25) / cols, fb = (c + .75) / cols;
+        const a0 = oa - w / 2 + w * fa, a1 = oa - w / 2 + w * fb, b = ob + d / 2;
+        s += poly([pt(cx, cy, a0, b, za), pt(cx, cy, a1, b, za), pt(cx, cy, a1, b, zb), pt(cx, cy, a0, b, zb)], cell(0, c, r));
+        const b0 = ob - d / 2 + d * fa, b1 = ob - d / 2 + d * fb, a = oa + w / 2;
+        s += poly([pt(cx, cy, a, b0, za), pt(cx, cy, a, b1, za), pt(cx, cy, a, b1, zb), pt(cx, cy, a, b0, zb)], shade(cell(1, c, r), .85));
+      }
+    }
+    return s;
+  }
+  function pyramid(cx, cy, w, h, color, { z0 = 0, oa = 0, ob = 0 } = {}) {
+    const apex = pt(cx, cy, oa, ob, z0 + h);
+    return poly([pt(cx, cy, oa - w / 2, ob + w / 2, z0), pt(cx, cy, oa + w / 2, ob + w / 2, z0), apex], shade(color, .9)) +
+      poly([pt(cx, cy, oa + w / 2, ob - w / 2, z0), pt(cx, cy, oa + w / 2, ob + w / 2, z0), apex], shade(color, .7));
+  }
+
+  function isoObject(item, cx, cy, night) {
+    const v = item.art[1];
+    switch (v) {
+      case "oneroom": return box(cx, cy, .6, .6, 46, "#d9c7a7") + box(cx, cy, .66, .66, 4, "#b9a585", { z0: 46 }) + boxWindows(cx, cy, .6, .6, 4, 44, 2, 3, night, 1);
+      case "villa": return box(cx, cy, .74, .74, 62, "#b5654a") + box(cx, cy, .8, .8, 4, "#8c4a35", { z0: 62 }) + boxWindows(cx, cy, .74, .74, 4, 60, 3, 4, night, 2);
+      case "apt": return box(cx, cy, .56, .56, 132, "#e9ecef") + box(cx, cy, .58, .58, 8, "#264653", { z0: 124 }) + boxWindows(cx, cy, .56, .56, 4, 120, 3, 12, night, 3);
+      case "penthouse": return box(cx, cy, .6, .6, 150, "#3f88b5") + boxWindows(cx, cy, .6, .6, 2, 142, 3, 14, night, 4, { day: "#8fd0f0" }) +
+        box(cx, cy, .6, .6, 14, night ? "#ffd166" : "#e9c46a", { z0: 150 }) + box(cx, cy, .2, .2, 3, "#48cae4", { z0: 164, oa: -.12, ob: -.12 });
+      case "mansion": {
+        const w = .82, d = .52, H = 34, R = 22, ob = -.08;
+        const back = poly([pt(cx, cy, -w / 2, ob - d / 2, H), pt(cx, cy, w / 2, ob - d / 2, H), pt(cx, cy, w / 2, ob, H + R), pt(cx, cy, -w / 2, ob, H + R)], "#5a4030");
+        const gable = poly([pt(cx, cy, w / 2, ob - d / 2, H), pt(cx, cy, w / 2, ob + d / 2, H), pt(cx, cy, w / 2, ob, H + R)], "#d8c6a4");
+        const front = poly([pt(cx, cy, -w / 2, ob + d / 2, H), pt(cx, cy, w / 2, ob + d / 2, H), pt(cx, cy, w / 2, ob, H + R), pt(cx, cy, -w / 2, ob, H + R)], "#7a5a44");
+        let hedge = "";
+        for (let k = 0; k < 5; k++) { const [x, y] = pt(cx, cy, -.4 + k * .2, .44); hedge += `<ellipse cx="${x}" cy="${y - 4}" rx="7" ry="5" fill="${night ? "#1f4d36" : "#2d6a4f"}"/>`; }
+        const pool = poly([pt(cx, cy, .18, .26), pt(cx, cy, .42, .26), pt(cx, cy, .42, .42), pt(cx, cy, .18, .42)], night ? "#2a6f97" : "#4cc9f0");
+        return pool + box(cx, cy, w, d, H, "#f1e3c8", { ob }) + boxWindows(cx, cy, w, d, 4, H - 2, 4, 2, night, 5, { ob }) + back + gable + front + hedge;
+      }
+      case "castle": {
+        const stone = "#c9c2b8", roof = "#3d5a80";
+        const tower = (oa, ob) => box(cx, cy, .2, .2, 58, "#bdb5aa", { oa, ob }) + boxWindows(cx, cy, .2, .2, 20, 50, 1, 2, night, 6, { oa, ob }) + pyramid(cx, cy, .26, 30, roof, { z0: 58, oa, ob });
+        const flag = (oa, ob, z) => { const [x, y] = pt(cx, cy, oa, ob, z); return `<line x1="${x}" y1="${y}" x2="${x}" y2="${y - 12}" stroke="#555" stroke-width="1.2"/><path d="M${x} ${y - 12} l9 3 l-9 3 z" fill="#e7c26a"/>`; };
+        return tower(-.36, -.36) + flag(-.36, -.36, 88) + box(cx, cy, .78, .78, 32, stone) + boxWindows(cx, cy, .78, .78, 6, 28, 4, 1, night, 7) +
+          box(cx, cy, .3, .3, 78, "#d3ccc2") + boxWindows(cx, cy, .3, .3, 36, 74, 1, 3, night, 8) + pyramid(cx, cy, .38, 38, roof, { z0: 78 }) + flag(0, 0, 116) +
+          tower(.36, -.36) + tower(-.36, .36) + tower(.36, .36);
+      }
+      case "yacht": return box(cx, cy, .74, .3, 9, "#f8f9fb", { z0: 2 }) + box(cx, cy, .76, .32, 2.2, "#1d3557", { z0: 6 }) + box(cx, cy, .4, .22, 9, "#e9eef4", { z0: 11, oa: -.06 }) + box(cx, cy, .22, .16, 6, "#dfe6ee", { z0: 20, oa: -.08 });
+      case "heli": {
+        const [x0, y0] = pt(cx, cy, 0, 0);
+        const [r1x, r1y] = pt(cx, cy, -.42, -.2, 26), [r2x, r2y] = pt(cx, cy, .42, .2, 26);
+        return `<ellipse cx="${x0}" cy="${y0}" rx="${TW * .34}" ry="${TH * .34}" fill="#5c677d"/><text x="${x0}" y="${y0 + 5}" text-anchor="middle" font-size="14" font-weight="800" fill="#e9ecef">H</text>` +
+          box(cx, cy, .4, .2, 14, "#e63946", { z0: 6 }) + box(cx, cy, .36, .06, 4, "#c1121f", { z0: 12, oa: -.32 }) + box(cx, cy, .14, .16, 6, "#a8dadc", { z0: 10, oa: .16 }) +
+          `<line x1="${r1x}" y1="${r1y}" x2="${r2x}" y2="${r2y}" stroke="#22252b" stroke-width="2.4" stroke-linecap="round"/>`;
+      }
+      case "jet": return box(cx, cy, .2, .96, 2, "#9aa5b4", { z0: 9, oa: .02 }) + box(cx, cy, .9, .15, 11, "#f8f9fb", { z0: 4 }) + box(cx, cy, .92, .16, 1.6, "#d4af37", { z0: 8 }) +
+        box(cx, cy, .1, .04, 18, "#1d3557", { z0: 15, oa: -.38 }) + box(cx, cy, .1, .1, 3, "#1e2b3d", { z0: 12, oa: .4 });
+    }
+    if (item.cat === "car") {
+      const c = item.art[2], low = ["sports", "super", "hyper"].includes(v), tall = v === "suv";
+      const H = tall ? 11 : low ? 6 : 8, CH = tall ? 9 : low ? 5 : 7, L = v === "mini" ? .42 : .56;
+      let s = `<ellipse cx="${pt(cx, cy, 0, 0)[0]}" cy="${pt(cx, cy, 0, 0)[1] + 2}" rx="${TW * .3}" ry="${TH * .2}" fill="rgba(0,0,0,.22)"/>`;
+      for (const [a, b] of [[-L / 2 + .08, .13], [L / 2 - .1, .13]]) { const [x, y] = pt(cx, cy, a, b, 3); s += `<ellipse cx="${x}" cy="${y}" rx="4.5" ry="5" fill="#15171c"/>`; }
+      s += box(cx, cy, L, .26, H, c, { z0: 3 }) + box(cx, cy, L * (low ? .45 : .58), .22, CH, "#1e2b3d", { z0: 3 + H, oa: low ? -.02 : -.04 });
+      if (v === "hyper") s += box(cx, cy, L, .27, 1.2, "#d4af37", { z0: 3 + H * .6 });
+      if (v === "super" || v === "hyper") s += box(cx, cy, .05, .28, 2, "#14161b", { z0: 3 + H + 4, oa: -L / 2 + .03 });
+      return s;
+    }
+    return "";
+  }
+
+  function tree(cx, cy, night) {
+    const [x, y] = pt(cx, cy, 0, 0);
+    const g = night ? "#1f4d36" : "#40916c";
+    return `<rect x="${x - 2}" y="${y - 16}" width="4" height="16" fill="#6b4f3a"/><circle cx="${x}" cy="${y - 26}" r="13" fill="${g}"/><circle cx="${x - 7}" cy="${y - 20}" r="8" fill="${shade(g, .85)}"/>`;
+  }
+  function tent(cx, cy) { return pyramid(cx, cy, .5, 34, "#e07a4a"); }
+
+  // Keep every placeable owned item on a valid, unique tile.
+  function ensurePlacement() {
+    state.place = state.place || {};
+    const placed = new Set();
+    for (const [id, k] of Object.entries(state.place)) {
+      const item = ITEM_BY_ID[id], [i, j] = parseKey(k);
+      if (!owns(id) || !placeable(item) || terrain(i, j) !== needs(item) || placed.has(k)) delete state.place[id];
+      else placed.add(k);
+    }
+    const free = (kind, back) => {
+      // Tall houses go to the back so they don't hide cars; everything else goes to the front.
+      const tiles = [];
+      for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) if (terrain(i, j) === kind && !placed.has(tileKey(i, j))) tiles.push([i, j]);
+      tiles.sort((p, q) => (back ? 1 : -1) * ((p[0] + p[1]) - (q[0] + q[1])) || p[0] - q[0]);
+      return tiles[0];
+    };
+    for (const id of state.items) {
+      const item = ITEM_BY_ID[id];
+      if (!placeable(item) || state.place[id]) continue;
+      const t = free(needs(item), item.cat === "house");
+      if (t) { state.place[id] = tileKey(...t); placed.add(tileKey(...t)); }
+    }
+  }
+
+  let selectedItem = null;
+  function isoSceneSVG() {
     const [h] = nowHM();
     const night = h >= 19 || h < 6, dusk = h >= 17 && h < 19;
     const sky = night ? ["#0b1430", "#26355e"] : dusk ? ["#ff9e6d", "#ffd8a8"] : ["#6cc3f5", "#d8f0ff"];
-    const house = bestOwned("house"), car = bestOwned("car"), watch = bestOwned("watch");
-    const yacht = owns("sp-yacht"), heli = owns("sp-heli"), jet = owns("sp-jet");
+    const watch = bestOwned("watch");
     const watchColor = watch ? ({ "watch-digital": "#333", "watch-classic": "#cfd5dc", "watch-diver": "#173a73", "watch-gold": "#e2be55", "watch-diamond": "#f4f6fa", "watch-grand": "#d4af37" })[watch.id] : null;
     const rich = totalWorth() >= 20_000_000_000 || (watch && watch.price >= 80_000_000);
+    const byTile = {};
+    for (const [id, k] of Object.entries(state.place)) byTile[k] = id;
+    const sel = selectedItem && ITEM_BY_ID[selectedItem];
+    const hasHouse = state.items.some(id => ITEM_BY_ID[id]?.cat === "house");
+
+    let ground = "", objects = [];
+    for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+      const [cx, cy] = pt(0, 0, i, j), k = tileKey(i, j), t = terrain(i, j);
+      const diamond = [pt(cx, cy, -.5, -.5), pt(cx, cy, .5, -.5), pt(cx, cy, .5, .5), pt(cx, cy, -.5, .5)];
+      const base = t === "water" ? (night ? "#1d3b6a" : "#4ea8de") : t === "road" ? (night ? "#2a2f3a" : "#8d9096") : ((i + j) % 2 ? (night ? "#24452f" : "#74c365") : (night ? "#284d34" : "#7ccc6c"));
+      const target = sel && t === needs(sel) && k !== state.place[sel.id];
+      ground += `<g data-t="${k}">` + poly(diamond, base, `stroke="${night ? "rgba(255,255,255,.06)" : "rgba(0,0,0,.08)"}"`);
+      if (t === "road") { const [a, b] = [pt(cx, cy, 0, -.45), pt(cx, cy, 0, .45)]; ground += `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="#f1f3f5" stroke-width="1.6" stroke-dasharray="7 6"/>`; }
+      if (t === "water") { const [a, b] = [pt(cx, cy, -.3, -.1), pt(cx, cy, .2, -.1)]; ground += `<path d="M${a[0]} ${a[1]} q6 -3 12 0 t12 0" stroke="rgba(255,255,255,.35)" fill="none"/>`; void b; }
+      if (target) ground += poly(diamond, "rgba(231,194,106,.28)", `stroke="#e7c26a" stroke-width="1.5" stroke-dasharray="4 3"`);
+      if (sel && state.place[sel.id] === k) ground += poly(diamond, "rgba(231,194,106,.45)", `stroke="#e7c26a" stroke-width="2.5"`);
+      ground += `</g>`;
+      const id = byTile[k];
+      if (id) objects.push({ d: i + j, svg: `<g data-t="${k}" data-item="${id}" style="cursor:pointer">${isoObject(ITEM_BY_ID[id], cx, cy, night)}</g>` });
+      else if (t === "land" && !hasHouse && i === 1 && j === 4) objects.push({ d: i + j, svg: `<g data-t="${k}">${tent(cx, cy)}</g>` });
+      else if (t === "land" && (i * 3 + j * 5) % 7 === 0) objects.push({ d: i + j, svg: `<g data-t="${k}">${tree(cx, cy, night)}</g>` });
+    }
+    const [ax, ay] = pt(0, 0, ...AVATAR_TILE);
+    objects.push({ d: AVATAR_TILE[0] + AVATAR_TILE[1] + .5, svg: `<g transform="translate(${ax + 14} ${ay - 46}) scale(.7)" pointer-events="none">${avatar(watchColor, rich)}</g>` });
+    objects.sort((a, b) => a.d - b.d);
+
     let stars = "";
-    if (night) for (let i = 0; i < 28; i++) stars += `<circle cx="${(i * 53) % 400}" cy="${(i * 37) % 110}" r="${i % 4 ? .8 : 1.3}" fill="#fff" opacity=".8"/>`;
-    let city = "";
-    for (let i = 0; i < 16; i++) { const w = 18 + (i * 7) % 14, hh = 30 + (i * 23) % 50; city += `<rect x="${i * 26 - 6}" y="${190 - hh}" width="${w}" height="${hh}" fill="${night ? "#1a2546" : "#9db4cc"}" opacity="${night ? .9 : .55}"/>`; }
-    const hv = house ? house.art[1] : "tent";
-    return `<svg viewBox="0 0 400 250" role="img" aria-label="내 세상">
-      ${SHADE}
-      <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${sky[0]}"/><stop offset="1" stop-color="${sky[1]}"/></linearGradient>
-      <linearGradient id="river" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${night ? "#1d3b6a" : "#4ea8de"}"/><stop offset="1" stop-color="${night ? "#0e1f3d" : "#2a6f97"}"/></linearGradient></defs>
-      <rect width="400" height="250" fill="url(#sky)"/>${stars}
-      <circle cx="${night ? 340 : 330}" cy="42" r="${night ? 14 : 18}" fill="${night ? "#f4f1de" : dusk ? "#ff7b54" : "#ffe066"}"/>
-      ${jet ? `<g transform="translate(150 22) scale(.62)">${specialArt("jet")}</g>` : ""}
-      ${heli ? `<g transform="translate(20 18) scale(.55)">${specialArt("heli")}</g>` : ""}
-      ${city}
-      <rect y="188" width="400" height="38" fill="${night ? "#1f3b2c" : "#6ab04c"}"/>
-      <rect y="186" width="400" height="4" fill="${night ? "#2d5a3d" : "#7cc35b"}"/>
-      <rect x="170" y="200" width="230" height="16" fill="${night ? "#2a2f3a" : "#8d8f93"}"/>
-      <rect y="224" width="400" height="26" fill="url(#river)"/>
-      ${yacht ? `<g transform="translate(262 214) scale(.62)">${specialArt("yacht")}</g>` : ""}
-      <g transform="translate(6 ${hv === "castle" ? 58 : 60})">${houseArt(hv, night)}</g>
-      ${car ? `<g transform="translate(188 162) scale(1.18)">${carArt(car.art[1], car.art[2])}</g>` : ""}
-      <g transform="translate(350 128) scale(1.05)">${avatar(watchColor, rich)}</g>
+    if (night) for (let s = 0; s < 30; s++) stars += `<circle cx="${-340 + (s * 53) % 680}" cy="${-230 + (s * 37) % 200}" r="${s % 4 ? .9 : 1.5}" fill="#fff" opacity=".8"/>`;
+    return `<svg viewBox="-345 -235 690 570" role="img" aria-label="내 동네">
+      <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${sky[0]}"/><stop offset="1" stop-color="${sky[1]}"/></linearGradient></defs>
+      <rect x="-345" y="-235" width="690" height="570" fill="url(#sky)"/>${stars}
+      <circle cx="270" cy="-180" r="${night ? 16 : 22}" fill="${night ? "#f4f1de" : dusk ? "#ff7b54" : "#ffe066"}"/>
+      ${ground}${objects.map(o => o.svg).join("")}
     </svg>`;
+  }
+
+  function onSceneClick(e) {
+    const g = e.target.closest("[data-t]");
+    if (!g) return;
+    const k = g.dataset.t, [i, j] = parseKey(k), here = Object.keys(state.place).find(id => state.place[id] === k);
+    if (!selectedItem) {
+      if (here) { selectedItem = here; renderWorld(); }
+      return;
+    }
+    const item = ITEM_BY_ID[selectedItem];
+    if (here === selectedItem) { selectedItem = null; renderWorld(); return; }
+    if (terrain(i, j) !== needs(item)) { toast(needs(item) === "water" ? "요트는 강 위에만 둘 수 있어요" : "땅(초록색 칸)에만 둘 수 있어요"); return; }
+    if (here) state.place[here] = state.place[selectedItem]; // swap
+    state.place[selectedItem] = k;
+    selectedItem = null; save(); renderWorld();
   }
 
   // ---------- Rendering ----------
@@ -660,8 +822,14 @@
   }
 
   function renderWorld() {
-    const [h] = nowHM();
-    $("scene").innerHTML = sceneSVG();
+    ensurePlacement(); save();
+    if (selectedItem && !state.place[selectedItem]) selectedItem = null;
+    $("scene").innerHTML = isoSceneSVG();
+    const sel = selectedItem && ITEM_BY_ID[selectedItem];
+    $("moveBar").innerHTML = sel
+      ? `<b>${esc(sel.name)}</b>을(를) 옮길 칸을 눌러주세요 <button id="moveCancel">취소</button>`
+      : `물건을 누르면 다른 칸으로 옮길 수 있어요`;
+    $("moveBar").classList.toggle("on", !!sel);
     const slots = [["house", "집", "텐트"], ["car", "차", "없음"], ["watch", "시계", "없음"], ["special", "특별", "없음"]];
     $("ownedStrip").innerHTML = slots.map(([cat, label, none]) => {
       const it = cat === "special" ? ITEMS.filter(i => i.cat === "special" && owns(i.id)).sort((a, b) => b.price - a.price)[0] : bestOwned(cat);
@@ -678,7 +846,6 @@
          <div class="hint" style="margin-top:6px">현금 ${won(next.price - state.cash)} 더 모으면 살 수 있어요. 코인으로 불려보세요!</div>`
       : `<div class="hint">지금 바로 살 수 있어요</div><b>${esc(next.name)}</b> · ${won(next.price)}
          <div class="bar"><i style="width:100%"></i></div>`;
-    void h;
   }
 
   let shopCat = "car";
@@ -739,7 +906,7 @@
   function celebrate(item) {
     $("cArt").innerHTML = itemSVG(item);
     $("cTitle").textContent = item.name + " 구매 완료!";
-    $("cText").textContent = won(item.price) + " · 내 세상에 바로 나타나요";
+    $("cText").textContent = won(item.price) + (placeable(item) ? " · 내 동네에 바로 나타나요" : " · 내 캐릭터가 차고 있어요");
     $("celebrate").classList.add("on");
     const colors = ["#e7c26a", "#ff5a5f", "#4c8dff", "#3ccf91", "#fff"];
     for (let i = 0; i < 40; i++) {
@@ -753,6 +920,8 @@
       setTimeout(() => c.remove(), 3500);
     }
   }
+  $("scene").addEventListener("click", onSceneClick);
+  $("moveBar").addEventListener("click", e => { if (e.target.id === "moveCancel") { selectedItem = null; renderWorld(); } });
   $("cClose").addEventListener("click", () => { $("celebrate").classList.remove("on"); showView("world"); });
 
   // ---------- Shop actions ----------
@@ -762,7 +931,7 @@
     if (buy) {
       const item = ITEM_BY_ID[buy.dataset.buyItem];
       if (!item || owns(item.id) || state.cash < item.price) return;
-      state.cash -= item.price; state.items.push(item.id);
+      state.cash -= item.price; state.items.push(item.id); ensurePlacement();
       log(`${item.name} 구매 -${wonShort(item.price)}원`); save();
       renderHeader(); renderShop(); celebrate(item);
     } else if (sell) {
@@ -770,7 +939,7 @@
       if (!item || !owns(item.id)) return;
       const back = Math.floor(item.price * RESALE);
       if (!confirm(`${item.name}을(를) ${won(back)}에 되팔까요?`)) return;
-      state.items = state.items.filter(id => id !== item.id); state.cash += back;
+      state.items = state.items.filter(id => id !== item.id); state.cash += back; ensurePlacement();
       log(`${item.name} 되팔기 +${wonShort(back)}원`); save();
       renderHeader(); renderShop(); toast(`${won(back)}을 받았어요`);
     }
