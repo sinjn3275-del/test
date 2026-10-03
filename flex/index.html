@@ -1,0 +1,843 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>플렉스시티</title>
+<meta name="description" content="사이버머니 100억으로 코인 투자하고, 번 돈으로 차·시계·집을 사는 2D 가상 세계">
+<style>
+  :root {
+    --bg: #0d1220;
+    --panel: #161d30;
+    --panel-2: #1e2740;
+    --line: #2a3554;
+    --text: #eef1f8;
+    --muted: #8f9ab5;
+    --gold: #e7c26a;
+    --gold-ink: #2a2005;
+    --up: #ff5a5f;
+    --down: #4c8dff;
+    --ok: #3ccf91;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", "Malgun Gothic", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding-bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .wrap { max-width: 560px; margin: 0 auto; padding: 0 16px; }
+
+  /* Header */
+  header { position: sticky; top: 0; z-index: 5; background: linear-gradient(var(--bg) 80%, transparent); padding: 14px 0 10px; }
+  .brand { display: flex; align-items: center; justify-content: space-between; }
+  .logo { font-weight: 800; letter-spacing: -0.02em; font-size: 18px; }
+  .logo b { color: var(--gold); }
+  .live { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+  .dot.on { background: var(--ok); box-shadow: 0 0 0 3px rgba(60, 207, 145, .18); }
+  .dot.off { background: var(--up); }
+  .worth { margin-top: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
+  .worth .label { font-size: 12px; color: var(--muted); }
+  .worth .total { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; margin-top: 2px; }
+  .worth .sub { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: 12.5px; color: var(--muted); }
+  .worth .sub span b { color: var(--text); font-weight: 600; }
+  .ret.up { color: var(--up); } .ret.down { color: var(--down); }
+
+  /* Tabs */
+  nav.tabs {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+    background: rgba(13, 18, 32, .96); backdrop-filter: blur(8px);
+    border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom);
+  }
+  nav.tabs .wrap { display: grid; grid-template-columns: repeat(4, 1fr); padding: 0; }
+  nav.tabs button { background: none; border: 0; padding: 10px 0 12px; font-size: 12px; color: var(--muted); display: grid; justify-items: center; gap: 3px; }
+  nav.tabs button svg { width: 22px; height: 22px; }
+  nav.tabs button.on { color: var(--gold); }
+
+  section.view { display: none; padding: 6px 0 20px; }
+  section.view.on { display: block; }
+  h2 { font-size: 16px; margin: 18px 0 10px; }
+  .hint { font-size: 13px; color: var(--muted); line-height: 1.5; }
+
+  /* World */
+  .scene { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); background: #1b2a4a; }
+  .scene svg { display: block; width: 100%; height: auto; }
+  .owned-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+  .owned-strip .slot { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px 6px; text-align: center; font-size: 11.5px; color: var(--muted); min-width: 0; }
+  .owned-strip .slot b { display: block; color: var(--text); font-size: 12px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .goal { margin-top: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
+  .goal .bar { height: 8px; border-radius: 6px; background: var(--panel-2); overflow: hidden; margin-top: 8px; }
+  .goal .bar i { display: block; height: 100%; background: linear-gradient(90deg, #c99a3b, var(--gold)); }
+
+  /* Coins */
+  .coin-list { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .coin { display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 11px 12px; }
+  .coin:last-child { border-bottom: 0; }
+  .coin:active { background: var(--panel-2); }
+  .cicon { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-size: 10.5px; font-weight: 800; color: #fff; }
+  .coin .nm { font-weight: 600; font-size: 14.5px; }
+  .coin .mine { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .coin .px { text-align: right; font-variant-numeric: tabular-nums; }
+  .coin .px .p { font-weight: 600; font-size: 14.5px; }
+  .coin .px .c { font-size: 12px; margin-top: 2px; }
+  .up { color: var(--up); } .down { color: var(--down); } .flat { color: var(--muted); }
+  .flash-up { animation: fu .6s; } .flash-down { animation: fd .6s; }
+  @keyframes fu { from { background: rgba(255, 90, 95, .18); } }
+  @keyframes fd { from { background: rgba(76, 141, 255, .18); } }
+
+  /* Shop */
+  .chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+  .chips button { flex: none; border: 1px solid var(--line); background: var(--panel); color: var(--muted); border-radius: 999px; padding: 7px 14px; font-size: 13.5px; }
+  .chips button.on { background: var(--gold); color: var(--gold-ink); border-color: var(--gold); font-weight: 700; }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+  .item { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; display: flex; flex-direction: column; min-width: 0; }
+  .item .art { background: radial-gradient(circle at 50% 40%, #26314f, #182038); border-radius: 10px; aspect-ratio: 4 / 3; display: grid; place-items: center; overflow: hidden; }
+  .item .art svg { width: 88%; height: 88%; }
+  .item .nm { font-weight: 700; font-size: 14px; margin-top: 8px; }
+  .item .pr { font-size: 13px; color: var(--gold); margin-top: 2px; font-weight: 600; }
+  .item .need { font-size: 11.5px; color: var(--muted); margin-top: 3px; min-height: 16px; }
+  .item .act { margin-top: 8px; }
+  .btn { width: 100%; border: 0; border-radius: 10px; padding: 10px; font-weight: 700; font-size: 14px; background: var(--gold); color: var(--gold-ink); }
+  .btn:disabled { background: var(--panel-2); color: var(--muted); cursor: not-allowed; }
+  .btn.ghost { background: var(--panel-2); color: var(--text); }
+  .btn.sell { background: var(--down); color: #fff; }
+  .owned-tag { display: inline-block; font-size: 11px; background: rgba(60, 207, 145, .15); color: var(--ok); border-radius: 6px; padding: 1px 6px; margin-left: 4px; vertical-align: 1px; }
+
+  /* Wallet */
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 14px; }
+  .row { display: flex; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .row:last-child { border-bottom: 0; }
+  .row .l { color: var(--muted); min-width: 0; }
+  .row .r { text-align: right; font-variant-numeric: tabular-nums; }
+  .row .r small { display: block; font-size: 12px; }
+  .empty { color: var(--muted); font-size: 13.5px; padding: 14px 0; text-align: center; }
+  .danger { background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 10px; padding: 10px; width: 100%; margin-top: 18px; font-size: 13px; }
+
+  /* Sheet */
+  .backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .55); z-index: 20; display: none; }
+  .backdrop.on { display: block; }
+  .sheet {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 21; transform: translateY(105%); visibility: hidden; transition: transform .22s ease, visibility 0s .22s;
+    background: var(--panel); border-radius: 18px 18px 0 0; border-top: 1px solid var(--line);
+    padding: 16px 16px calc(18px + env(safe-area-inset-bottom)); max-width: 560px; margin: 0 auto;
+  }
+  .sheet.on { transform: none; visibility: visible; transition: transform .22s ease; }
+  .sheet .top { display: flex; align-items: center; gap: 10px; }
+  .sheet .top .nm { font-weight: 800; font-size: 17px; }
+  .sheet .top .px { margin-left: auto; text-align: right; font-variant-numeric: tabular-nums; }
+  .seg { display: grid; grid-template-columns: 1fr 1fr; background: var(--panel-2); border-radius: 10px; padding: 3px; margin-top: 14px; }
+  .seg button { border: 0; background: none; padding: 9px; border-radius: 8px; color: var(--muted); font-weight: 700; }
+  .seg button.on.buy { background: var(--up); color: #fff; }
+  .seg button.on.sell { background: var(--down); color: #fff; }
+  .field { margin-top: 14px; }
+  .field label { font-size: 12.5px; color: var(--muted); display: flex; justify-content: space-between; }
+  .field input { width: 100%; margin-top: 6px; background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 10px; padding: 12px; font-size: 18px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+  .field input:focus { outline: 2px solid var(--gold); outline-offset: -1px; }
+  .quick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; }
+  .quick button { border: 1px solid var(--line); background: var(--panel-2); border-radius: 8px; padding: 7px 0; font-size: 13px; }
+  .preview { font-size: 13px; color: var(--muted); margin: 12px 0; min-height: 36px; line-height: 1.45; }
+  .preview b { color: var(--text); }
+
+  /* Celebration */
+  .celebrate { position: fixed; inset: 0; z-index: 30; display: none; place-items: center; background: rgba(5, 8, 16, .82); padding: 16px; }
+  .celebrate.on { display: grid; }
+  .celebrate .box { width: min(360px, 100%); background: var(--panel); border: 1px solid var(--gold); border-radius: 20px; padding: 18px; text-align: center; animation: pop .35s cubic-bezier(.2, 1.4, .4, 1); }
+  @keyframes pop { from { transform: scale(.7); opacity: 0; } }
+  .celebrate .art { background: radial-gradient(circle at 50% 40%, #33406a, #182038); border-radius: 14px; aspect-ratio: 4 / 3; display: grid; place-items: center; }
+  .celebrate .art svg { width: 86%; height: 86%; }
+  .celebrate h3 { margin: 14px 0 4px; font-size: 20px; }
+  .celebrate p { margin: 0 0 14px; color: var(--muted); font-size: 14px; }
+  .confetti { position: fixed; top: -10px; width: 8px; height: 12px; z-index: 31; pointer-events: none; animation: fall linear forwards; }
+  @keyframes fall { to { transform: translateY(105vh) rotate(720deg); } }
+
+  .toast { position: fixed; left: 50%; bottom: calc(90px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 40; background: #fff; color: #111; font-size: 14px; font-weight: 600; padding: 10px 16px; border-radius: 999px; box-shadow: 0 6px 20px rgba(0, 0, 0, .35); opacity: 0; transition: opacity .2s; pointer-events: none; max-width: calc(100% - 32px); text-align: center; }
+  .toast.on { opacity: 1; }
+  footer { font-size: 11.5px; color: var(--muted); text-align: center; padding: 24px 0 8px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="brand">
+      <div class="logo">FLEX<b>CITY</b> <span style="font-weight:600;font-size:13px;color:var(--muted)">플렉스시티</span></div>
+      <div class="live"><span class="dot" id="liveDot"></span><span id="liveText">시세 연결 중</span></div>
+    </div>
+    <div class="worth">
+      <div class="label">총 재산</div>
+      <div class="total" id="total">-</div>
+      <div class="sub">
+        <span>현금 <b id="cash">-</b></span>
+        <span>코인 <b id="coinVal">-</b></span>
+        <span>소유물 <b id="itemVal">-</b></span>
+        <span class="ret" id="ret"></span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="view on" id="view-world">
+    <div class="scene" id="scene"></div>
+    <div class="owned-strip" id="ownedStrip"></div>
+    <div class="goal" id="goal"></div>
+  </section>
+
+  <section class="view" id="view-coin">
+    <h2>코인 거래소 <span class="hint" style="font-weight:400">· 업비트 실시간 시세</span></h2>
+    <div class="coin-list" id="coinList"></div>
+    <p class="hint" style="margin-top:10px">코인을 눌러서 사고팔 수 있어요. 수수료는 0.05%예요.</p>
+  </section>
+
+  <section class="view" id="view-shop">
+    <h2>쇼핑</h2>
+    <div class="chips" id="cats"></div>
+    <div class="grid" id="shopGrid"></div>
+  </section>
+
+  <section class="view" id="view-wallet">
+    <h2>보유 코인</h2>
+    <div class="card" id="walletCoins"></div>
+    <h2>내 소유물</h2>
+    <div class="card" id="walletItems"></div>
+    <h2>최근 기록</h2>
+    <div class="card" id="history"></div>
+    <button class="danger" id="resetBtn">처음부터 다시 시작 (100억으로 초기화)</button>
+  </section>
+
+  <footer>
+    플렉스시티의 돈과 물건은 모두 가상이며 현금으로 바꿀 수 없어요.<br>
+    코인 시세: 업비트 공개 API · 투자 권유가 아닙니다.
+  </footer>
+</main>
+
+<nav class="tabs">
+  <div class="wrap">
+    <button data-view="world" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>내 세상</button>
+    <button data-view="coin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-5 4 4 8-8"/><path d="M15 8h5v5"/></svg>코인</button>
+    <button data-view="shop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1 12H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>쇼핑</button>
+    <button data-view="wallet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M16 13h2"/><path d="M3 10h18"/></svg>내 지갑</button>
+  </div>
+</nav>
+
+<div class="backdrop" id="backdrop"></div>
+<div class="sheet" id="sheet">
+  <div class="top">
+    <div class="cicon" id="sIcon"></div>
+    <div class="nm" id="sName"></div>
+    <div class="px"><div id="sPrice" style="font-weight:700"></div><div id="sChange" style="font-size:12px"></div></div>
+  </div>
+  <div class="seg">
+    <button data-side="buy" class="on buy">사기</button>
+    <button data-side="sell" class="sell">팔기</button>
+  </div>
+  <div class="field">
+    <label><span id="sLabel">얼마어치 살까요?</span><span id="sAvail"></span></label>
+    <input id="sAmount" inputmode="numeric" autocomplete="off" placeholder="0">
+    <div class="quick" id="sQuick"></div>
+  </div>
+  <div class="preview" id="sPreview"></div>
+  <button class="btn" id="sSubmit">사기</button>
+</div>
+
+<div class="celebrate" id="celebrate">
+  <div class="box">
+    <div class="art" id="cArt"></div>
+    <h3 id="cTitle"></h3>
+    <p id="cText"></p>
+    <button class="btn" id="cClose">내 세상에서 보기</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  "use strict";
+
+  const START_CASH = 10_000_000_000; // 100억
+  const COIN_FEE = 0.0005;
+  const RESALE = 0.9;                 // 물건을 되팔 때 받는 비율
+  const MIN_ORDER = 5_000;
+  const POLL_MS = 3_000;
+  const STORE_KEY = "flexcity.v1";
+
+  const COINS = [
+    { market: "KRW-BTC", name: "비트코인", color: "#f7931a" },
+    { market: "KRW-ETH", name: "이더리움", color: "#627eea" },
+    { market: "KRW-XRP", name: "리플", color: "#23292f" },
+    { market: "KRW-SOL", name: "솔라나", color: "#9945ff" },
+    { market: "KRW-DOGE", name: "도지코인", color: "#c2a633" },
+    { market: "KRW-ADA", name: "에이다", color: "#0033ad" },
+    { market: "KRW-AVAX", name: "아발란체", color: "#e84142" },
+    { market: "KRW-LINK", name: "체인링크", color: "#2a5ada" },
+    { market: "KRW-DOT", name: "폴카닷", color: "#e6007a" },
+    { market: "KRW-TRX", name: "트론", color: "#c4302b" },
+  ];
+  const COIN_BY_MARKET = Object.fromEntries(COINS.map(c => [c.market, c]));
+  const sym = m => m.replace("KRW-", "");
+
+  const CATS = [
+    { id: "car", name: "자동차" },
+    { id: "watch", name: "시계" },
+    { id: "house", name: "집" },
+    { id: "special", name: "요트·전용기" },
+  ];
+  const ITEMS = [
+    { id: "car-mini", cat: "car", name: "귀요미 경차", price: 15_000_000, art: ["car", "mini", "#7fd1ae"] },
+    { id: "car-sedan", cat: "car", name: "패밀리 세단", price: 45_000_000, art: ["car", "sedan", "#c9d3e0"] },
+    { id: "car-suv", cat: "car", name: "대형 SUV", price: 95_000_000, art: ["car", "suv", "#3a4a55"] },
+    { id: "car-sports", cat: "car", name: "로드스터 스포츠카", price: 280_000_000, art: ["car", "sports", "#e63946"] },
+    { id: "car-super", cat: "car", name: "V12 슈퍼카", price: 650_000_000, art: ["car", "super", "#ffb703"] },
+    { id: "car-hyper", cat: "car", name: "한정판 하이퍼카", price: 3_500_000_000, art: ["car", "hyper", "#2b2f38"] },
+    { id: "watch-digital", cat: "watch", name: "전자시계", price: 300_000, art: ["watch", "digital"] },
+    { id: "watch-classic", cat: "watch", name: "가죽 클래식", price: 6_000_000, art: ["watch", "classic"] },
+    { id: "watch-diver", cat: "watch", name: "다이버 워치", price: 18_000_000, art: ["watch", "diver"] },
+    { id: "watch-gold", cat: "watch", name: "골드 드레스워치", price: 80_000_000, art: ["watch", "gold"] },
+    { id: "watch-diamond", cat: "watch", name: "다이아 베젤", price: 500_000_000, art: ["watch", "diamond"] },
+    { id: "watch-grand", cat: "watch", name: "그랜드 컴플리케이션", price: 2_500_000_000, art: ["watch", "grand"] },
+    { id: "house-oneroom", cat: "house", name: "역세권 원룸", price: 200_000_000, art: ["house", "oneroom"] },
+    { id: "house-villa", cat: "house", name: "신축 빌라", price: 500_000_000, art: ["house", "villa"] },
+    { id: "house-apt", cat: "house", name: "브랜드 아파트", price: 1_500_000_000, art: ["house", "apt"] },
+    { id: "house-penthouse", cat: "house", name: "한강뷰 펜트하우스", price: 8_000_000_000, art: ["house", "penthouse"] },
+    { id: "house-mansion", cat: "house", name: "정원 딸린 대저택", price: 15_000_000_000, art: ["house", "mansion"] },
+    { id: "house-castle", cat: "house", name: "프라이빗 섬의 성", price: 50_000_000_000, art: ["house", "castle"] },
+    { id: "sp-yacht", cat: "special", name: "럭셔리 요트", price: 3_000_000_000, art: ["special", "yacht"] },
+    { id: "sp-heli", cat: "special", name: "개인 헬기", price: 6_000_000_000, art: ["special", "heli"] },
+    { id: "sp-jet", cat: "special", name: "프라이빗 제트", price: 40_000_000_000, art: ["special", "jet"] },
+  ];
+  const ITEM_BY_ID = Object.fromEntries(ITEMS.map(i => [i.id, i]));
+
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+  // ---------- Money formatting ----------
+  function won(n) {
+    n = Math.floor(Math.abs(n));
+    const jo = Math.floor(n / 1e12), eok = Math.floor((n % 1e12) / 1e8), man = Math.floor((n % 1e8) / 1e4), rest = n % 1e4;
+    const parts = [];
+    if (jo) parts.push(jo.toLocaleString("ko-KR") + "조");
+    if (eok) parts.push(eok.toLocaleString("ko-KR") + "억");
+    if (man) parts.push(man.toLocaleString("ko-KR") + "만");
+    if (!jo && !eok && (rest || !parts.length)) parts.push(rest.toLocaleString("ko-KR"));
+    return parts.join(" ") + "원";
+  }
+  const wonShort = n => {
+    n = Math.floor(n);
+    if (n >= 1e8) { const e = n / 1e8; return (e >= 100 ? Math.round(e).toLocaleString("ko-KR") : +e.toFixed(1)) + "억"; }
+    if (n >= 1e4) return Math.round(n / 1e4).toLocaleString("ko-KR") + "만";
+    return n.toLocaleString("ko-KR");
+  };
+  const fmtPrice = p => p >= 100 ? Math.round(p).toLocaleString("ko-KR") : p >= 1 ? p.toFixed(2) : p.toFixed(4);
+  const fmtQty = q => q >= 1 ? (+q.toFixed(4)).toLocaleString("ko-KR", { maximumFractionDigits: 4 }) : (+q.toPrecision(4)).toString();
+  const fmtPct = r => (r > 0 ? "+" : "") + (r * 100).toFixed(2) + "%";
+  const cls = r => r > 0 ? "up" : r < 0 ? "down" : "flat";
+
+  // ---------- State (saved in this browser) ----------
+  const fresh = () => ({ cash: START_CASH, coins: {}, items: [], log: [], created: Date.now() });
+  function load() {
+    try {
+      const s = JSON.parse(localStorage.getItem(STORE_KEY));
+      if (s && typeof s.cash === "number") return { ...fresh(), ...s };
+    } catch (e) { /* storage unavailable or corrupt */ }
+    return fresh();
+  }
+  let state = load();
+  function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ } }
+  function log(text) { state.log.unshift({ t: Date.now(), text }); state.log = state.log.slice(0, 40); }
+
+  // ---------- Live coin prices ----------
+  const prices = {};
+  let live = null, fails = 0;
+  async function poll() {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 4000);
+    try {
+      const res = await fetch("https://api.upbit.com/v1/ticker?markets=" + COINS.map(c => c.market).join(","), { signal: ctrl.signal });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      for (const t of await res.json()) {
+        const prev = prices[t.market]?.price;
+        prices[t.market] = { price: t.trade_price, change: t.signed_change_rate, prev };
+      }
+      live = true; fails = 0;
+    } catch (e) {
+      if (++fails >= 3) live = false;
+    } finally { clearTimeout(timer); }
+    renderLive();
+  }
+
+  // ---------- Totals ----------
+  const coinValue = () => Object.entries(state.coins).reduce((s, [m, h]) => s + (prices[m] ? h.qty * prices[m].price : h.cost), 0);
+  const itemValue = () => state.items.reduce((s, id) => s + Math.floor((ITEM_BY_ID[id]?.price || 0) * RESALE), 0);
+  const totalWorth = () => state.cash + coinValue() + itemValue();
+  const owns = id => state.items.includes(id);
+  const bestOwned = cat => ITEMS.filter(i => i.cat === cat && owns(i.id)).sort((a, b) => b.price - a.price)[0] || null;
+
+  // ---------- 2D art ----------
+  function carArt(v, color) {
+    const P = {
+      mini:   [14, 100, 26, 40, 8, 20, 28, 72, 84, 8],
+      sedan:  [4, 116, 24, 40, 11, 28, 40, 72, 88, 8],
+      suv:    [6, 114, 18, 38, 4, 10, 15, 80, 92, 10],
+      sports: [4, 116, 28, 40, 16, 30, 48, 70, 90, 8],
+      super:  [2, 118, 30, 40, 19, 24, 52, 66, 94, 8],
+      hyper:  [2, 118, 31, 40, 20, 22, 52, 64, 96, 8],
+    }[v];
+    const [x0, x1, bt, by, ry, cb, rb, rf, cf, r] = P;
+    const body = `M${x0} ${by} L${x0} ${bt + 4} Q${x0} ${bt} ${x0 + 5} ${bt} L${cb} ${bt} L${rb} ${ry} L${rf} ${ry} L${cf} ${bt} L${x1 - 5} ${bt + 2} Q${x1} ${bt + 3} ${x1} ${bt + 8} L${x1} ${by} Z`;
+    const glass = `M${cb + 5} ${bt - 1} L${rb + 2} ${ry + 3} L${rf - 2} ${ry + 3} L${cf - 5} ${bt - 1} Z`;
+    const mid = (rb + rf) / 2;
+    const wr = x0 + 19, wf = x1 - 20;
+    const wheel = x => `<circle cx="${x}" cy="${by}" r="${r + 1.6}" fill="#0b0d12"/><circle cx="${x}" cy="${by}" r="${r}" fill="#1c1f26"/><circle cx="${x}" cy="${by}" r="${r * .56}" fill="${v === "hyper" ? "#d4af37" : "#c3c9d3"}"/><circle cx="${x}" cy="${by}" r="${r * .2}" fill="#4a505c"/>`;
+    let extra = "";
+    if (v === "super" || v === "hyper") extra += `<rect x="${x0 + 6}" y="${bt - 5}" width="2" height="5" fill="#14161b"/><rect x="${x0 + 12}" y="${bt - 5}" width="2" height="5" fill="#14161b"/><rect x="${x0}" y="${bt - 7}" width="18" height="3" rx="1" fill="#14161b"/><path d="M${wr + 12} ${bt + 6} L${wr + 22} ${bt + 4} L${wr + 20} ${bt + 10} Z" fill="rgba(0,0,0,.45)"/>`;
+    if (v === "hyper") extra += `<rect x="${x0 + 4}" y="${bt + 7}" width="${x1 - x0 - 8}" height="2" fill="#d4af37"/>`;
+    if (v === "suv") extra += `<rect x="${rb}" y="${ry - 3}" width="${rf - rb}" height="2" rx="1" fill="#22272e"/>`;
+    return `<g>
+      <ellipse cx="${(x0 + x1) / 2}" cy="${by + 9}" rx="${(x1 - x0) / 2}" ry="3" fill="rgba(0,0,0,.28)"/>
+      <path d="${body}" fill="${color}"/>
+      <path d="${body}" fill="url(#shade)"/>
+      <path d="${glass}" fill="#1e2b3d"/>
+      <path d="M${cb + 7} ${bt - 2} L${rb + 4} ${ry + 4} L${rb + 9} ${ry + 4}" stroke="rgba(255,255,255,.35)" stroke-width="1.2" fill="none"/>
+      <line x1="${mid}" y1="${ry + 2}" x2="${mid}" y2="${bt}" stroke="${color}" stroke-width="2.4"/>
+      <line x1="${mid}" y1="${bt + 1}" x2="${mid}" y2="${by - 6}" stroke="rgba(0,0,0,.25)" stroke-width="1"/>
+      <rect x="${x1 - 6}" y="${bt + 5}" width="5" height="3" rx="1" fill="#fff6c2"/>
+      <rect x="${x0}" y="${bt + 4}" width="3" height="4" rx="1" fill="#ff4d4d"/>
+      ${extra}${wheel(wr)}${wheel(wf)}
+    </g>`;
+  }
+
+  function nowHM() { const d = new Date(Date.now() + 9 * 3600_000); return [d.getUTCHours(), d.getUTCMinutes()]; }
+
+  function watchArt(v) {
+    const S = {
+      digital: { strap: "#2b2b2b" },
+      classic: { strap: "#7a4a2a", kase: "#cfd5dc", bezel: "#cfd5dc", dial: "#f5f0e6", hand: "#222" },
+      diver: { strap: "#aab3bf", link: true, kase: "#c4ccd6", bezel: "#14171c", dial: "#173a73", hand: "#fff", ticks: true },
+      gold: { strap: "#d4af37", link: true, kase: "#e2be55", bezel: "#d4af37", dial: "#efe0b5", hand: "#5b4314" },
+      diamond: { strap: "#dcdfe4", link: true, kase: "#e5e4e2", bezel: "#f4f6fa", dial: "#121418", hand: "#e9eef7", gems: true },
+      grand: { strap: "#5a2e1a", kase: "#d4af37", bezel: "#c9a234", dial: "#14244a", hand: "#f2d98a", grand: true },
+    }[v];
+    const [h, m] = nowHM();
+    let s = `<rect x="19" y="0" width="22" height="90" rx="6" fill="${S.strap}"/>`;
+    if (S.link) for (let y = 5; y < 90; y += 6) s += `<line x1="19" y1="${y}" x2="41" y2="${y}" stroke="rgba(0,0,0,.18)"/>`;
+    if (v === "digital") {
+      return s + `<rect x="12" y="27" width="36" height="36" rx="7" fill="#1d1f24"/><rect x="16" y="35" width="28" height="20" rx="2" fill="#a7bb8f"/>
+        <text x="30" y="49.5" text-anchor="middle" font-family="monospace" font-weight="700" font-size="10" fill="#1d2a14">${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}</text>
+        <rect x="47" y="40" width="3" height="10" rx="1" fill="#444"/>`;
+    }
+    s += `<rect x="48" y="42" width="5" height="6" rx="1.5" fill="${S.kase}"/><circle cx="30" cy="45" r="20" fill="${S.kase}"/><circle cx="30" cy="45" r="17.5" fill="${S.bezel}"/>`;
+    if (S.ticks) for (let i = 0; i < 12; i++) { const a = i * Math.PI / 6; s += `<circle cx="${30 + 16 * Math.sin(a)}" cy="${45 - 16 * Math.cos(a)}" r="${i === 0 ? 1.2 : .7}" fill="#fff"/>`; }
+    if (S.gems) for (let i = 0; i < 24; i++) { const a = i * Math.PI / 12; s += `<circle cx="${30 + 16 * Math.sin(a)}" cy="${45 - 16 * Math.cos(a)}" r="1.25" fill="#fff" stroke="#9fd3ff" stroke-width=".4"/>`; }
+    s += `<circle cx="30" cy="45" r="14.5" fill="${S.dial}"/>`;
+    for (let i = 0; i < 12; i++) {
+      const a = i * Math.PI / 6, r1 = i % 3 === 0 ? 10.5 : 12, r2 = 13.3;
+      s += `<line x1="${30 + r1 * Math.sin(a)}" y1="${45 - r1 * Math.cos(a)}" x2="${30 + r2 * Math.sin(a)}" y2="${45 - r2 * Math.cos(a)}" stroke="${S.hand}" stroke-width="${i % 3 === 0 ? 1.4 : .7}"/>`;
+    }
+    if (S.grand) {
+      s += `<circle cx="30" cy="52" r="4.5" fill="#0b1530" stroke="${S.hand}" stroke-width=".5"/><circle cx="31.5" cy="51.5" r="2.2" fill="#f2d98a"/>
+        <circle cx="23" cy="43" r="3" fill="none" stroke="${S.hand}" stroke-width=".5"/><circle cx="37" cy="43" r="3" fill="none" stroke="${S.hand}" stroke-width=".5"/>`;
+    }
+    const ha = ((h % 12) + m / 60) * Math.PI / 6, ma = m * Math.PI / 30;
+    s += `<line x1="30" y1="45" x2="${30 + 7.5 * Math.sin(ha)}" y2="${45 - 7.5 * Math.cos(ha)}" stroke="${S.hand}" stroke-width="1.8" stroke-linecap="round"/>
+      <line x1="30" y1="45" x2="${30 + 11 * Math.sin(ma)}" y2="${45 - 11 * Math.cos(ma)}" stroke="${S.hand}" stroke-width="1.1" stroke-linecap="round"/>
+      <circle cx="30" cy="45" r="1.3" fill="${S.hand}"/>
+      <path d="M17 36 A15 15 0 0 1 28 30" stroke="rgba(255,255,255,.35)" stroke-width="1.4" fill="none"/>`;
+    return s;
+  }
+
+  function windows(x, y, cols, rows, w, h, gx, gy, night, seed = 0) {
+    let s = "";
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      const lit = night ? (r * 7 + c * 3 + seed) % 3 !== 0 : false;
+      s += `<rect x="${x + c * (w + gx)}" y="${y + r * (h + gy)}" width="${w}" height="${h}" fill="${night ? (lit ? "#ffd27a" : "#2b3550") : "#a9d6e5"}"/>`;
+    }
+    return s;
+  }
+
+  function houseArt(v, night = false) {
+    switch (v) {
+      case "tent": return `<path d="M50 130 L80 82 L110 130 Z" fill="#d97b4a"/><path d="M80 82 L72 130 L88 130 Z" fill="#7a3d22"/><line x1="80" y1="82" x2="80" y2="74" stroke="#5b4a3a" stroke-width="2"/>
+        <path d="M80 74 L92 78 L80 82 Z" fill="#e7c26a"/>`;
+      case "oneroom": return `<rect x="45" y="55" width="70" height="75" fill="#d9c7a7"/><rect x="42" y="51" width="76" height="6" fill="#b9a585"/>
+        ${windows(53, 64, 3, 3, 14, 12, 7, 8, night, 1)}<rect x="72" y="112" width="16" height="18" fill="#5a4636"/>`;
+      case "villa": return `<rect x="30" y="30" width="100" height="100" fill="#b5654a"/><rect x="27" y="26" width="106" height="6" fill="#8c4a35"/>
+        ${windows(38, 38, 4, 4, 16, 13, 8, 8, night, 2)}${[0, 1, 2, 3].map(r => `<rect x="36" y="${51 + r * 21}" width="88" height="2" fill="#e8e1d6"/>`).join("")}
+        <rect x="70" y="110" width="20" height="20" fill="#3c4a5c"/>`;
+      case "apt": return `<rect x="50" y="0" width="60" height="130" fill="#e9ecef"/><rect x="100" y="0" width="10" height="130" fill="#ced4da"/>
+        <rect x="50" y="5" width="60" height="7" fill="#264653"/>${windows(55, 18, 4, 10, 8, 7, 3.5, 4, night, 3)}<rect x="70" y="118" width="16" height="12" fill="#495057"/>`;
+      case "penthouse": {
+        let s = `<defs><linearGradient id="pg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6fb3dc"/><stop offset="1" stop-color="#1b4965"/></linearGradient></defs>
+          <rect x="45" y="8" width="70" height="122" fill="url(#pg)"/>`;
+        for (let y = 30; y < 130; y += 8) s += `<line x1="45" y1="${y}" x2="115" y2="${y}" stroke="rgba(255,255,255,.25)"/>`;
+        for (let x = 59; x < 115; x += 14) s += `<line x1="${x}" y1="22" x2="${x}" y2="130" stroke="rgba(255,255,255,.12)"/>`;
+        if (night) for (let y = 31, i = 0; y < 128; y += 8, i++) for (let x = 46, j = 0; x < 114; x += 14, j++) if ((i * 5 + j * 3) % 4 === 0) s += `<rect x="${x}" y="${y}" width="13" height="6" fill="rgba(255,210,122,.75)"/>`;
+        return s + `<rect x="45" y="8" width="70" height="14" fill="#ffd166" opacity="${night ? .95 : .7}"/><rect x="42" y="5" width="76" height="3" fill="#cfd8e3"/>
+          <rect x="50" y="2" width="22" height="3" fill="#48cae4"/><path d="M98 5 Q100 -6 104 -2 M100 5 Q99 -5 95 -3" stroke="#2d6a4f" stroke-width="1.5" fill="none"/>`;
+      }
+      case "mansion": return `<rect x="5" y="80" width="30" height="50" fill="#e8d8b8"/><rect x="125" y="80" width="30" height="50" fill="#e8d8b8"/>
+        <rect x="25" y="58" width="110" height="72" fill="#f1e3c8"/><path d="M15 60 L80 22 L145 60 Z" fill="#6b4f3a"/><path d="M0 82 L20 70 L40 82 Z M120 82 L140 70 L160 82 Z" fill="#6b4f3a"/>
+        <path d="M58 60 L80 44 L102 60 Z" fill="#f8f1e2"/>${[62, 74, 86, 98].map(x => `<rect x="${x - 2}" y="62" width="4" height="50" fill="#fffaf0"/>`).join("")}
+        <rect x="73" y="96" width="14" height="22" rx="7" fill="#5a3e2b"/>${windows(32, 66, 2, 2, 12, 14, 6, 10, night, 4)}${windows(110, 66, 2, 2, 12, 14, -38, 10, night, 5)}
+        ${windows(10, 92, 1, 1, 18, 14, 0, 0, night, 6)}${windows(132, 92, 1, 1, 18, 14, 0, 0, night, 7)}
+        <rect x="56" y="118" width="48" height="5" fill="#d6c7a8"/>${[0, 12, 24, 36, 112, 124, 136, 148].map(x => `<circle cx="${x + 6}" cy="126" r="7" fill="#2d6a4f"/>`).join("")}`;
+      case "castle": {
+        const tower = (x, w, top) => `<rect x="${x}" y="${top}" width="${w}" height="${130 - top}" fill="#bdb5aa"/><path d="M${x - 4} ${top} L${x + w / 2} ${top - 26} L${x + w + 4} ${top} Z" fill="#3d5a80"/>
+          <line x1="${x + w / 2}" y1="${top - 26}" x2="${x + w / 2}" y2="${top - 38}" stroke="#555" stroke-width="1.2"/><path d="M${x + w / 2} ${top - 38} L${x + w / 2 + 10} ${top - 34} L${x + w / 2} ${top - 30} Z" fill="#e7c26a"/>
+          ${windows(x + w / 2 - 3, top + 12, 1, 2, 6, 10, 0, 14, night, x)}`;
+        let s = `<rect x="20" y="62" width="120" height="68" fill="#c9c2b8"/>`;
+        for (let x = 20; x < 140; x += 12) s += `<rect x="${x}" y="55" width="7" height="8" fill="#c9c2b8"/>`;
+        return s + tower(8, 26, 40) + tower(126, 26, 40) + tower(62, 36, 30) +
+          `<path d="M68 130 L68 108 Q80 94 92 108 L92 130 Z" fill="#3a2b20"/>${windows(36, 78, 2, 2, 8, 10, 8, 12, night, 9)}${windows(100, 78, 2, 2, 8, 10, 8, 12, night, 11)}`;
+      }
+    }
+    return "";
+  }
+
+  function specialArt(v) {
+    switch (v) {
+      case "yacht": return `<path d="M4 36 L136 36 L120 54 L22 54 Z" fill="#fbfcfe"/><path d="M10 43 L131 43 L128 47 L14 47 Z" fill="#1d3557"/>
+        <path d="M30 36 L42 21 L108 21 L118 36 Z" fill="#eef2f6"/><rect x="48" y="26" width="58" height="5" rx="2" fill="#1d3557"/>
+        <path d="M54 21 L62 11 L96 11 L100 21 Z" fill="#dfe6ee"/><rect x="66" y="14" width="26" height="3" fill="#1d3557"/><line x1="80" y1="11" x2="80" y2="2" stroke="#8d99ae" stroke-width="1.4"/>`;
+      case "heli": return `<rect x="16" y="11" width="90" height="3" rx="1.5" fill="#22252b"/><rect x="58" y="13" width="4" height="7" fill="#22252b"/>
+        <rect x="78" y="27" width="50" height="5" rx="2" fill="#c1121f"/><path d="M122 27 L130 14 L134 14 L130 30 Z" fill="#c1121f"/><circle cx="131" cy="25" r="6" fill="none" stroke="#22252b" stroke-width="1.2"/>
+        <ellipse cx="60" cy="32" rx="27" ry="14" fill="#e63946"/><path d="M40 24 Q48 18 62 19 L62 32 L36 32 Q35 27 40 24 Z" fill="#a8dadc"/>
+        <line x1="42" y1="46" x2="42" y2="52" stroke="#22252b" stroke-width="2"/><line x1="74" y1="45" x2="74" y2="52" stroke="#22252b" stroke-width="2"/><line x1="32" y1="52" x2="86" y2="52" stroke="#22252b" stroke-width="2.4" stroke-linecap="round"/>`;
+      case "jet": {
+        let s = `<path d="M14 22 L4 2 L18 2 L34 22 Z" fill="#1d3557"/><path d="M62 33 L84 33 L60 54 L48 54 Z" fill="#9aa5b4"/>
+          <path d="M12 30 Q12 22 28 22 L118 22 Q134 23 139 30 Q134 37 118 38 L28 38 Q12 38 12 30 Z" fill="#f8f9fb"/>
+          <rect x="18" y="30" width="114" height="2.2" fill="#d4af37"/><ellipse cx="34" cy="17" rx="13" ry="4.5" fill="#cfd6df"/>
+          <path d="M122 25 Q131 25 134 29 L124 29 Z" fill="#1e2b3d"/>`;
+        for (let x = 46; x < 116; x += 8) s += `<ellipse cx="${x}" cy="26.5" rx="2" ry="1.8" fill="#1e2b3d"/>`;
+        return s;
+      }
+    }
+    return "";
+  }
+
+  const SHADE = `<defs><linearGradient id="shade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".22"/><stop offset=".55" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".28"/></linearGradient></defs>`;
+  function itemSVG(item, night = false) {
+    const [kind, v, color] = item.art;
+    if (kind === "car") return `<svg viewBox="-4 -4 128 64">${SHADE}${carArt(v, color)}</svg>`;
+    if (kind === "watch") return `<svg viewBox="-20 -2 100 94">${watchArt(v)}</svg>`;
+    if (kind === "house") return `<svg viewBox="-6 ${v === "castle" ? -44 : v === "mansion" ? 14 : -10} 172 ${v === "castle" ? 178 : v === "mansion" ? 120 : 144}">${houseArt(v, night)}</svg>`;
+    return `<svg viewBox="-4 -4 148 64">${specialArt(v)}</svg>`;
+  }
+
+  function avatar(watch, rich) {
+    const suit = rich;
+    const shirt = suit ? "#1b263b" : "#4c8dff";
+    return `<g>
+      <ellipse cx="15" cy="70" rx="11" ry="2.5" fill="rgba(0,0,0,.25)"/>
+      <rect x="8.5" y="44" width="5.5" height="24" rx="2" fill="#2b2d42"/><rect x="16" y="44" width="5.5" height="24" rx="2" fill="#2b2d42"/>
+      <rect x="7" y="66" width="8" height="4" rx="2" fill="#111"/><rect x="15" y="66" width="8" height="4" rx="2" fill="#111"/>
+      <path d="M6 24 Q15 19 24 24 L24 47 L6 47 Z" fill="${shirt}"/>
+      ${suit ? `<path d="M12 22 L15 30 L18 22 Z" fill="#fff"/><path d="M14.2 24 L15.8 24 L16.4 33 L15 35 L13.6 33 Z" fill="#c1121f"/>` : ""}
+      <rect x="1.5" y="25" width="5" height="19" rx="2.5" fill="${shirt}"/><rect x="23.5" y="25" width="5" height="19" rx="2.5" fill="${shirt}"/>
+      <circle cx="4" cy="45" r="2.6" fill="#f1c6a5"/><circle cx="26" cy="45" r="2.6" fill="#f1c6a5"/>
+      ${watch ? `<rect x="22.6" y="39.5" width="6.8" height="3.4" rx="1" fill="${watch}"/><circle cx="26" cy="41.2" r="1.1" fill="#fff"/>` : ""}
+      <rect x="12.5" y="17" width="5" height="5" fill="#f1c6a5"/>
+      <circle cx="15" cy="11" r="8" fill="#f1c6a5"/>
+      <path d="M7 10 Q8 2 15 2 Q23 2 23 10 Q19 6 15 6.5 Q10 6 7 10 Z" fill="#2b2118"/>
+      ${rich ? `<rect x="9" y="9.5" width="12" height="3.2" rx="1.4" fill="#111"/>` : `<circle cx="12" cy="11" r="1" fill="#2b2118"/><circle cx="18" cy="11" r="1" fill="#2b2118"/>`}
+      <path d="M12.5 14.5 Q15 16.5 17.5 14.5" stroke="#9a5b45" stroke-width="1" fill="none"/>
+    </g>`;
+  }
+
+  function sceneSVG() {
+    const [h] = nowHM();
+    const night = h >= 19 || h < 6, dusk = h >= 17 && h < 19;
+    const sky = night ? ["#0b1430", "#26355e"] : dusk ? ["#ff9e6d", "#ffd8a8"] : ["#6cc3f5", "#d8f0ff"];
+    const house = bestOwned("house"), car = bestOwned("car"), watch = bestOwned("watch");
+    const yacht = owns("sp-yacht"), heli = owns("sp-heli"), jet = owns("sp-jet");
+    const watchColor = watch ? ({ "watch-digital": "#333", "watch-classic": "#cfd5dc", "watch-diver": "#173a73", "watch-gold": "#e2be55", "watch-diamond": "#f4f6fa", "watch-grand": "#d4af37" })[watch.id] : null;
+    const rich = totalWorth() >= 20_000_000_000 || (watch && watch.price >= 80_000_000);
+    let stars = "";
+    if (night) for (let i = 0; i < 28; i++) stars += `<circle cx="${(i * 53) % 400}" cy="${(i * 37) % 110}" r="${i % 4 ? .8 : 1.3}" fill="#fff" opacity=".8"/>`;
+    let city = "";
+    for (let i = 0; i < 16; i++) { const w = 18 + (i * 7) % 14, hh = 30 + (i * 23) % 50; city += `<rect x="${i * 26 - 6}" y="${190 - hh}" width="${w}" height="${hh}" fill="${night ? "#1a2546" : "#9db4cc"}" opacity="${night ? .9 : .55}"/>`; }
+    const hv = house ? house.art[1] : "tent";
+    return `<svg viewBox="0 0 400 250" role="img" aria-label="내 세상">
+      ${SHADE}
+      <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${sky[0]}"/><stop offset="1" stop-color="${sky[1]}"/></linearGradient>
+      <linearGradient id="river" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${night ? "#1d3b6a" : "#4ea8de"}"/><stop offset="1" stop-color="${night ? "#0e1f3d" : "#2a6f97"}"/></linearGradient></defs>
+      <rect width="400" height="250" fill="url(#sky)"/>${stars}
+      <circle cx="${night ? 340 : 330}" cy="42" r="${night ? 14 : 18}" fill="${night ? "#f4f1de" : dusk ? "#ff7b54" : "#ffe066"}"/>
+      ${jet ? `<g transform="translate(150 22) scale(.62)">${specialArt("jet")}</g>` : ""}
+      ${heli ? `<g transform="translate(20 18) scale(.55)">${specialArt("heli")}</g>` : ""}
+      ${city}
+      <rect y="188" width="400" height="38" fill="${night ? "#1f3b2c" : "#6ab04c"}"/>
+      <rect y="186" width="400" height="4" fill="${night ? "#2d5a3d" : "#7cc35b"}"/>
+      <rect x="170" y="200" width="230" height="16" fill="${night ? "#2a2f3a" : "#8d8f93"}"/>
+      <rect y="224" width="400" height="26" fill="url(#river)"/>
+      ${yacht ? `<g transform="translate(262 214) scale(.62)">${specialArt("yacht")}</g>` : ""}
+      <g transform="translate(6 ${hv === "castle" ? 58 : 60})">${houseArt(hv, night)}</g>
+      ${car ? `<g transform="translate(188 162) scale(1.18)">${carArt(car.art[1], car.art[2])}</g>` : ""}
+      <g transform="translate(350 128) scale(1.05)">${avatar(watchColor, rich)}</g>
+    </svg>`;
+  }
+
+  // ---------- Rendering ----------
+  function renderHeader() {
+    const total = totalWorth(), r = total / START_CASH - 1;
+    $("total").textContent = won(total);
+    $("cash").textContent = wonShort(state.cash) + "원";
+    $("coinVal").textContent = wonShort(coinValue()) + "원";
+    $("itemVal").textContent = wonShort(itemValue()) + "원";
+    const ret = $("ret");
+    ret.textContent = "시작 대비 " + fmtPct(r);
+    ret.className = "ret " + cls(r);
+  }
+
+  function renderLive() {
+    const dot = $("liveDot");
+    dot.className = "dot" + (live === true ? " on" : live === false ? " off" : "");
+    $("liveText").textContent = live === true ? "실시간" : live === false ? "시세 연결 안 됨" : "시세 연결 중";
+    renderHeader();
+    renderCoins();
+    if (sheetMarket) renderSheet();
+  }
+
+  function renderCoins() {
+    const list = $("coinList");
+    if (!list.children.length) {
+      list.innerHTML = COINS.map(c => `<button class="coin" data-m="${c.market}">
+        <div class="cicon" style="background:${c.color}">${sym(c.market)}</div>
+        <div><div class="nm">${c.name}</div><div class="mine"></div></div>
+        <div class="px"><div class="p">-</div><div class="c flat">-</div></div></button>`).join("");
+    }
+    for (const el of list.children) {
+      const m = el.dataset.m, p = prices[m], h = state.coins[m];
+      el.querySelector(".mine").textContent = h ? `보유 ${fmtQty(h.qty)} ${sym(m)}` : sym(m);
+      if (!p) continue;
+      el.querySelector(".p").textContent = fmtPrice(p.price);
+      const c = el.querySelector(".c");
+      c.textContent = fmtPct(p.change);
+      c.className = "c " + cls(p.change);
+      if (p.prev != null && p.prev !== p.price) {
+        const px = el.querySelector(".px");
+        px.classList.remove("flash-up", "flash-down");
+        void px.offsetWidth;
+        px.classList.add(p.price > p.prev ? "flash-up" : "flash-down");
+      }
+    }
+  }
+
+  function renderWorld() {
+    const [h] = nowHM();
+    $("scene").innerHTML = sceneSVG();
+    const slots = [["house", "집", "텐트"], ["car", "차", "없음"], ["watch", "시계", "없음"], ["special", "특별", "없음"]];
+    $("ownedStrip").innerHTML = slots.map(([cat, label, none]) => {
+      const it = cat === "special" ? ITEMS.filter(i => i.cat === "special" && owns(i.id)).sort((a, b) => b.price - a.price)[0] : bestOwned(cat);
+      return `<div class="slot">${label}<b>${it ? esc(it.name) : none}</b></div>`;
+    }).join("");
+    const next = ITEMS.filter(i => !owns(i.id)).sort((a, b) => a.price - b.price).find(i => i.price > state.cash)
+      || ITEMS.filter(i => !owns(i.id)).sort((a, b) => b.price - a.price)[0];
+    const goal = $("goal");
+    if (!next) { goal.innerHTML = `<b>모든 물건을 다 샀어요!</b><div class="hint">플렉스시티 정복 완료 👑</div>`; return; }
+    const pct = Math.min(100, state.cash / next.price * 100);
+    goal.innerHTML = next.price > state.cash
+      ? `<div class="hint">다음 목표</div><b>${esc(next.name)}</b> · ${won(next.price)}
+         <div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div>
+         <div class="hint" style="margin-top:6px">현금 ${won(next.price - state.cash)} 더 모으면 살 수 있어요. 코인으로 불려보세요!</div>`
+      : `<div class="hint">지금 바로 살 수 있어요</div><b>${esc(next.name)}</b> · ${won(next.price)}
+         <div class="bar"><i style="width:100%"></i></div>`;
+    void h;
+  }
+
+  let shopCat = "car";
+  function renderShop() {
+    $("cats").innerHTML = CATS.map(c => `<button data-cat="${c.id}" class="${c.id === shopCat ? "on" : ""}">${c.name}</button>`).join("");
+    const [h] = nowHM();
+    const night = h >= 19 || h < 6;
+    $("shopGrid").innerHTML = ITEMS.filter(i => i.cat === shopCat).map(i => {
+      const own = owns(i.id), short = i.price - state.cash;
+      return `<div class="item">
+        <div class="art">${itemSVG(i, night)}</div>
+        <div class="nm">${esc(i.name)}${own ? '<span class="owned-tag">보유</span>' : ""}</div>
+        <div class="pr">${won(i.price)}</div>
+        <div class="need">${own ? `되팔면 ${wonShort(Math.floor(i.price * RESALE))}원` : short > 0 ? `${wonShort(short)}원 부족` : ""}</div>
+        <div class="act">${own
+          ? `<button class="btn ghost" data-sell-item="${i.id}">되팔기</button>`
+          : `<button class="btn" data-buy-item="${i.id}" ${short > 0 ? "disabled" : ""}>${short > 0 ? "돈이 부족해요" : "사기"}</button>`}</div>
+      </div>`;
+    }).join("");
+  }
+
+  function renderWallet() {
+    const coins = Object.entries(state.coins);
+    $("walletCoins").innerHTML = coins.length ? coins.map(([m, h]) => {
+      const p = prices[m]?.price, val = p ? h.qty * p : h.cost, r = val / h.cost - 1;
+      return `<div class="row"><div class="l">${COIN_BY_MARKET[m].name}<br><small>${fmtQty(h.qty)} ${sym(m)}</small></div>
+        <div class="r">${won(val)}<small class="${cls(r)}">${p ? fmtPct(r) : "시세 대기"} (${r >= 0 ? "+" : "-"}${wonShort(Math.abs(val - h.cost))}원)</small></div></div>`;
+    }).join("") : `<div class="empty">아직 코인이 없어요. 코인 탭에서 사보세요.</div>`;
+    const items = state.items.map(id => ITEM_BY_ID[id]).filter(Boolean).sort((a, b) => b.price - a.price);
+    $("walletItems").innerHTML = items.length ? items.map(i => `<div class="row"><div class="l">${esc(i.name)}</div>
+      <div class="r">${won(i.price)}<small class="flat">되팔면 ${wonShort(Math.floor(i.price * RESALE))}원</small></div></div>`).join("")
+      : `<div class="empty">아직 산 물건이 없어요.</div>`;
+    $("history").innerHTML = state.log.length ? state.log.slice(0, 15).map(l => {
+      const d = new Date(l.t + 9 * 3600_000);
+      return `<div class="row"><div class="l">${d.getUTCMonth() + 1}/${d.getUTCDate()} ${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}</div><div class="r">${esc(l.text)}</div></div>`;
+    }).join("") : `<div class="empty">기록이 없어요.</div>`;
+  }
+
+  function renderAll() { renderHeader(); renderCoins(); renderWorld(); renderShop(); renderWallet(); }
+
+  // ---------- Tabs ----------
+  document.querySelectorAll("nav.tabs button").forEach(b => b.addEventListener("click", () => showView(b.dataset.view)));
+  function showView(v) {
+    document.querySelectorAll("nav.tabs button").forEach(x => x.classList.toggle("on", x.dataset.view === v));
+    document.querySelectorAll("section.view").forEach(s => s.classList.toggle("on", s.id === "view-" + v));
+    if (v === "world") renderWorld();
+    if (v === "shop") renderShop();
+    if (v === "wallet") renderWallet();
+    window.scrollTo(0, 0);
+  }
+
+  // ---------- Toast & celebration ----------
+  let toastTimer;
+  function toast(msg) {
+    const t = $("toast"); t.textContent = msg; t.classList.add("on");
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("on"), 2200);
+  }
+  function celebrate(item) {
+    $("cArt").innerHTML = itemSVG(item);
+    $("cTitle").textContent = item.name + " 구매 완료!";
+    $("cText").textContent = won(item.price) + " · 내 세상에 바로 나타나요";
+    $("celebrate").classList.add("on");
+    const colors = ["#e7c26a", "#ff5a5f", "#4c8dff", "#3ccf91", "#fff"];
+    for (let i = 0; i < 40; i++) {
+      const c = document.createElement("div");
+      c.className = "confetti";
+      c.style.left = Math.random() * 100 + "vw";
+      c.style.background = colors[i % colors.length];
+      c.style.animationDuration = 1.6 + Math.random() * 1.4 + "s";
+      c.style.animationDelay = Math.random() * .4 + "s";
+      document.body.appendChild(c);
+      setTimeout(() => c.remove(), 3500);
+    }
+  }
+  $("cClose").addEventListener("click", () => { $("celebrate").classList.remove("on"); showView("world"); });
+
+  // ---------- Shop actions ----------
+  $("cats").addEventListener("click", e => { const b = e.target.closest("[data-cat]"); if (b) { shopCat = b.dataset.cat; renderShop(); } });
+  $("shopGrid").addEventListener("click", e => {
+    const buy = e.target.closest("[data-buy-item]"), sell = e.target.closest("[data-sell-item]");
+    if (buy) {
+      const item = ITEM_BY_ID[buy.dataset.buyItem];
+      if (!item || owns(item.id) || state.cash < item.price) return;
+      state.cash -= item.price; state.items.push(item.id);
+      log(`${item.name} 구매 -${wonShort(item.price)}원`); save();
+      renderHeader(); renderShop(); celebrate(item);
+    } else if (sell) {
+      const item = ITEM_BY_ID[sell.dataset.sellItem];
+      if (!item || !owns(item.id)) return;
+      const back = Math.floor(item.price * RESALE);
+      if (!confirm(`${item.name}을(를) ${won(back)}에 되팔까요?`)) return;
+      state.items = state.items.filter(id => id !== item.id); state.cash += back;
+      log(`${item.name} 되팔기 +${wonShort(back)}원`); save();
+      renderHeader(); renderShop(); toast(`${won(back)}을 받았어요`);
+    }
+  });
+
+  // ---------- Coin trading sheet ----------
+  let sheetMarket = null, side = "buy";
+  const parseNum = s => Number(String(s).replace(/[^\d.]/g, "")) || 0;
+  function openSheet(m) {
+    sheetMarket = m; side = "buy"; $("sAmount").value = "";
+    $("backdrop").classList.add("on"); $("sheet").classList.add("on");
+    renderSheet();
+  }
+  function closeSheet() { sheetMarket = null; $("backdrop").classList.remove("on"); $("sheet").classList.remove("on"); }
+  $("backdrop").addEventListener("click", closeSheet);
+  $("coinList").addEventListener("click", e => { const b = e.target.closest("[data-m]"); if (b) openSheet(b.dataset.m); });
+  document.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => { side = b.dataset.side; $("sAmount").value = ""; renderSheet(); }));
+  $("sAmount").addEventListener("input", e => {
+    const n = parseNum(e.target.value);
+    if (side === "buy") e.target.value = n ? Math.floor(n).toLocaleString("ko-KR") : "";
+    renderSheet(false);
+  });
+  $("sQuick").addEventListener("click", e => {
+    const b = e.target.closest("[data-f]"); if (!b) return;
+    const f = Number(b.dataset.f);
+    if (side === "buy") $("sAmount").value = Math.floor(state.cash * f).toLocaleString("ko-KR");
+    else { const h = state.coins[sheetMarket]; $("sAmount").value = h ? String(+(h.qty * f).toFixed(8)) : ""; }
+    renderSheet(false);
+  });
+
+  function renderSheet(full = true) {
+    const m = sheetMarket, c = COIN_BY_MARKET[m], p = prices[m], h = state.coins[m];
+    if (full) {
+      $("sIcon").style.background = c.color; $("sIcon").textContent = sym(m);
+      $("sName").textContent = c.name;
+      document.querySelectorAll(".seg button").forEach(b => { b.classList.toggle("on", b.dataset.side === side); });
+      $("sLabel").textContent = side === "buy" ? "얼마어치 살까요? (원)" : `몇 개 팔까요? (${sym(m)})`;
+      $("sQuick").innerHTML = [[.1, "10%"], [.25, "25%"], [.5, "50%"], [1, "최대"]].map(([f, l]) => `<button data-f="${f}">${l}</button>`).join("");
+      $("sAmount").inputMode = side === "buy" ? "numeric" : "decimal";
+    }
+    $("sPrice").textContent = p ? fmtPrice(p.price) + "원" : "시세 대기 중";
+    $("sChange").textContent = p ? fmtPct(p.change) : "";
+    $("sChange").className = p ? cls(p.change) : "";
+    $("sAvail").textContent = side === "buy" ? `현금 ${wonShort(state.cash)}원` : `보유 ${h ? fmtQty(h.qty) : 0} ${sym(m)}`;
+    const amt = parseNum($("sAmount").value), btn = $("sSubmit");
+    btn.className = "btn " + (side === "sell" ? "sell" : "");
+    btn.style.background = side === "buy" ? "var(--up)" : "";
+    btn.style.color = "#fff";
+    let ok = !!p && amt > 0, msg = "";
+    if (!p) msg = "시세를 불러오는 중이에요.";
+    else if (side === "buy") {
+      const qty = amt * (1 - COIN_FEE) / p.price;
+      if (amt > state.cash) { ok = false; msg = "현금이 부족해요."; }
+      else if (amt && amt < MIN_ORDER) { ok = false; msg = `최소 ${MIN_ORDER.toLocaleString("ko-KR")}원부터 살 수 있어요.`; }
+      else if (amt) msg = `약 <b>${fmtQty(qty)} ${sym(m)}</b>를 받아요. (수수료 ${Math.ceil(amt * COIN_FEE).toLocaleString("ko-KR")}원)`;
+    } else {
+      const have = h?.qty || 0, gross = amt * p.price;
+      if (amt > have + 1e-12) { ok = false; msg = "가진 개수보다 많아요."; }
+      else if (amt && gross < MIN_ORDER) { ok = false; msg = `최소 ${MIN_ORDER.toLocaleString("ko-KR")}원어치부터 팔 수 있어요.`; }
+      else if (amt) msg = `약 <b>${won(gross * (1 - COIN_FEE))}</b>을 받아요.`;
+    }
+    $("sPreview").innerHTML = msg;
+    btn.disabled = !ok;
+    btn.textContent = side === "buy" ? "사기" : "팔기";
+  }
+
+  $("sSubmit").addEventListener("click", () => {
+    const m = sheetMarket, p = prices[m]?.price, amt = parseNum($("sAmount").value);
+    if (!p || !amt) return;
+    const name = COIN_BY_MARKET[m].name;
+    if (side === "buy") {
+      if (amt > state.cash || amt < MIN_ORDER) return;
+      const qty = amt * (1 - COIN_FEE) / p;
+      const h = state.coins[m] || { qty: 0, cost: 0 };
+      h.qty += qty; h.cost += amt; state.coins[m] = h; state.cash -= amt;
+      log(`${name} ${fmtQty(qty)}개 매수 -${wonShort(amt)}원`);
+      toast(`${name} ${fmtQty(qty)}개를 샀어요`);
+    } else {
+      const h = state.coins[m]; if (!h) return;
+      const qty = Math.min(amt, h.qty), gross = qty * p, net = gross * (1 - COIN_FEE);
+      if (gross < MIN_ORDER) return;
+      const pnl = net - h.cost * (qty / h.qty);
+      h.cost -= h.cost * (qty / h.qty); h.qty -= qty;
+      if (h.qty < 1e-10) delete state.coins[m];
+      state.cash += net;
+      log(`${name} ${fmtQty(qty)}개 매도 +${wonShort(net)}원 (${pnl >= 0 ? "수익" : "손실"} ${wonShort(Math.abs(pnl))}원)`);
+      toast(`${won(net)}을 받았어요 · ${pnl >= 0 ? "수익" : "손실"} ${wonShort(Math.abs(pnl))}원`);
+    }
+    state.cash = Math.floor(state.cash); save();
+    $("sAmount").value = ""; renderSheet(); renderHeader(); renderCoins();
+  });
+
+  $("resetBtn").addEventListener("click", () => {
+    if (!confirm("코인과 물건이 모두 사라지고 100억으로 다시 시작해요. 괜찮을까요?")) return;
+    state = fresh(); save(); renderAll(); toast("100억으로 다시 시작해요!");
+  });
+
+  renderAll();
+  poll();
+  setInterval(poll, POLL_MS);
+  setInterval(() => { if ($("view-world").classList.contains("on")) renderWorld(); }, 60_000);
+})();
+</script>
+</body>
+</html>
