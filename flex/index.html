@@ -9,6 +9,7 @@
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
 </script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
     --bg: #0d1220;
@@ -173,6 +174,22 @@
 
   .toast { position: fixed; left: 50%; bottom: calc(90px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 40; background: #fff; color: #111; font-size: 14px; font-weight: 600; padding: 10px 16px; border-radius: 999px; box-shadow: 0 6px 20px rgba(0, 0, 0, .35); opacity: 0; transition: opacity .2s; pointer-events: none; max-width: calc(100% - 32px); text-align: center; }
   .toast.on { opacity: 1; }
+  .acct { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 999px; padding: 5px 11px; font-size: 12.5px; font-weight: 700; max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .brand .right { display: flex; align-items: center; gap: 8px; }
+  .guestbar { display: none; margin: 4px 0 10px; padding: 9px 12px; border-radius: 12px; background: rgba(231, 194, 106, .12); border: 1px solid rgba(231, 194, 106, .35); font-size: 12.5px; color: var(--text); align-items: center; gap: 8px; justify-content: space-between; }
+  .guestbar.on { display: flex; }
+  .guestbar button { flex: none; border: 0; border-radius: 8px; padding: 6px 10px; font-weight: 700; font-size: 12.5px; background: var(--gold); color: var(--gold-ink); }
+  .auth { position: fixed; inset: 0; z-index: 40; display: none; place-items: center; background: rgba(5, 8, 16, .8); padding: 16px; }
+  .auth.on { display: grid; }
+  .auth form { width: min(360px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 18px; display: grid; gap: 10px; }
+  .auth h3 { margin: 0; font-size: 18px; }
+  .auth .tabs2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .auth .tabs2 button { border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); border-radius: 10px; padding: 8px; font-weight: 700; }
+  .auth .tabs2 button.on { background: var(--gold); color: var(--gold-ink); border-color: var(--gold); }
+  .auth input { width: 100%; background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 10px; padding: 11px 12px; font-size: 15px; }
+  .auth .msg { font-size: 12.5px; color: var(--up); min-height: 16px; }
+  .auth .msg.ok { color: var(--ok); }
+  .auth .close { background: none; border: 0; color: var(--muted); font-size: 13px; padding: 4px; }
   footer { font-size: 11.5px; color: var(--muted); text-align: center; padding: 24px 0 8px; line-height: 1.6; }
 </style>
 </head>
@@ -181,7 +198,10 @@
   <div class="wrap">
     <div class="brand">
       <div class="logo">FLEX<b>CITY</b> <span style="font-weight:600;font-size:13px;color:var(--muted)">플렉스시티</span></div>
-      <div class="live"><span class="dot" id="liveDot"></span><span id="liveText">시세 연결 중</span></div>
+      <div class="right">
+        <div class="live"><span class="dot" id="liveDot"></span><span id="liveText">시세 연결 중</span></div>
+        <button class="acct" id="acctBtn">로그인</button>
+      </div>
     </div>
     <div class="worth">
       <div class="label">총 재산</div>
@@ -197,6 +217,7 @@
 </header>
 
 <main class="wrap">
+  <div class="guestbar" id="guestBar"><span>지금은 <b>체험 모드</b>예요. 가입하면 <b>10억</b>으로 시작하고, 어느 기기에서든 이어서 할 수 있어요.</span><button id="guestLogin">가입·로그인</button></div>
   <section class="view on" id="view-world">
     <div class="scene" id="scene"></div>
     <div class="movebar" id="moveBar"></div>
@@ -233,6 +254,7 @@
     <h2>최근 기록</h2>
     <div class="card" id="history"></div>
     <button class="danger" id="resetBtn">처음부터 다시 시작 (100억으로 초기화)</button>
+    <button class="danger" id="logoutBtn" hidden>로그아웃</button>
   </section>
 
   <footer>
@@ -280,6 +302,19 @@
   </div>
 </div>
 <div class="toast" id="toast"></div>
+<div class="auth" id="auth">
+  <form id="authForm" autocomplete="on">
+    <h3>플렉스시티 계정</h3>
+    <div class="tabs2" id="authTabs"><button type="button" data-mode="login" class="on">로그인</button><button type="button" data-mode="signup">회원가입</button></div>
+    <input id="aEmail" type="email" placeholder="이메일" autocomplete="email" required>
+    <input id="aPass" type="password" placeholder="비밀번호 (6자 이상)" autocomplete="current-password" required minlength="6">
+    <input id="aNick" type="text" placeholder="닉네임 (2~12자)" maxlength="12" hidden>
+    <div class="msg" id="aMsg"></div>
+    <button class="btn" id="aSubmit" type="submit">로그인</button>
+    <div class="hint" style="font-size:12px;color:var(--muted)">입고수 계정으로도 로그인할 수 있어요.</div>
+    <button class="close" type="button" id="aClose">닫기</button>
+  </form>
+</div>
 
 <script>
 (() => {
@@ -394,10 +429,44 @@
     return fresh();
   }
   let state = load();
-  function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ } }
+  // ---------- Server (Supabase, shared with 입고수; see supabase/flex.sql) ----------
+  const SUPABASE_URL = "https://vlytmxbrvtmiclkxnewi.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_isAKtgkx-1A6Xlsntz_0Rw_ZFhtUET4";
+  let sb = null;
+  try { sb = window.supabase?.createClient(SUPABASE_URL, SUPABASE_KEY) || null; } catch (e) { sb = null; }
+  let online = false, userId = null, lookTimer = null;
+  const startOf = () => state.start || START_CASH;
+  const fromServer = d => ({ ...fresh(), ...d, cash: Number(d.cash), start: Number(d.start) });
+
+  // Logged in: cash/coins/items only change through server functions; layout and avatar
+  // are saved in the background. Guest: everything lives in this browser.
+  function save() {
+    if (online) {
+      clearTimeout(lookTimer);
+      lookTimer = setTimeout(() => sb.rpc("flex_save_look", { p_place: state.place, p_avatar: state.avatar || {} })
+        .then(({ error }) => { if (error) toast("저장하지 못했어요: " + error.message); }), 800);
+      return;
+    }
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ }
+  }
+  let busy = false;
+  // Calls a server function that returns the whole state. Returns true on success.
+  async function server(fn, args) {
+    if (busy) return false;
+    busy = true;
+    try {
+      const { data, error } = await sb.rpc(fn, args);
+      if (error) { toast(error.message); return false; }
+      state = fromServer(data);
+      return true;
+    } catch (e) {
+      toast("서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.");
+      return false;
+    } finally { busy = false; }
+  }
   // Another tab of the game saved: take its state, so this tab's older copy never overwrites it.
   addEventListener("storage", e => {
-    if (e.key !== STORE_KEY) return;
+    if (e.key !== STORE_KEY || online) return;
     state = load();
     selectedItem = null;
     renderAll();
@@ -800,7 +869,7 @@
 
   // ---------- Rendering ----------
   function renderHeader() {
-    const total = totalWorth(), r = total / START_CASH - 1;
+    const total = totalWorth(), r = total / startOf() - 1;
     $("total").textContent = won(total);
     $("cash").textContent = wonShort(state.cash) + "원";
     $("coinVal").textContent = wonShort(coinValue()) + "원";
@@ -1042,6 +1111,19 @@
   $("cats").addEventListener("click", e => { const b = e.target.closest("[data-cat]"); if (b) { shopCat = b.dataset.cat; renderShop(); } });
   $("shopGrid").addEventListener("click", e => {
     const buy = e.target.closest("[data-buy-item]"), sell = e.target.closest("[data-sell-item]");
+    if (online && (buy || sell)) {
+      const item = ITEM_BY_ID[(buy || sell).dataset[buy ? "buyItem" : "sellItem"]];
+      if (!item) return;
+      if (sell && !confirm(`${item.name}을(를) ${won(Math.floor(item.price * RESALE))}에 되팔까요?`)) return;
+      (buy || sell).disabled = true;
+      server(buy ? "flex_buy_item" : "flex_sell_item", { p_item: item.id }).then(ok => {
+        if (!ok) { renderShop(); return; }
+        ensurePlacement(); save();
+        renderHeader(); renderShop();
+        if (buy) celebrate(item); else toast(`${won(Math.floor(item.price * RESALE))}을 받았어요`);
+      });
+      return;
+    }
     if (buy) {
       const item = ITEM_BY_ID[buy.dataset.buyItem];
       if (!item || owns(item.id) || state.cash < item.price) return;
@@ -1121,10 +1203,23 @@
     btn.textContent = side === "buy" ? "사기" : "팔기";
   }
 
-  $("sSubmit").addEventListener("click", () => {
+  $("sSubmit").addEventListener("click", async () => {
     const m = sheetMarket, p = prices[m]?.price, amt = parseNum($("sAmount").value);
     if (!p || !amt) return;
     const name = coinName(m);
+    if (online) {
+      const btn = $("sSubmit"), before = state.coins[m]?.qty || 0, cash0 = state.cash;
+      btn.disabled = true; btn.textContent = "체결 중…";
+      const ok = await server(side === "buy" ? "flex_buy_coin" : "flex_sell_coin",
+        side === "buy" ? { p_market: m, p_krw: amt, p_name: name } : { p_market: m, p_qty: amt, p_name: name });
+      if (ok) {
+        const diff = (state.coins[m]?.qty || 0) - before;
+        toast(side === "buy" ? `${name} ${fmtQty(diff)}개를 샀어요` : `${won(state.cash - cash0)}을 받았어요`);
+        $("sAmount").value = "";
+      }
+      renderSheet(); renderHeader(); renderCoins();
+      return;
+    }
     if (side === "buy") {
       if (amt > state.cash || amt < MIN_ORDER) return;
       const qty = amt * (1 - COIN_FEE) / p;
@@ -1147,12 +1242,97 @@
     $("sAmount").value = ""; renderSheet(); renderHeader(); renderCoins();
   });
 
-  $("resetBtn").addEventListener("click", () => {
+  $("resetBtn").addEventListener("click", async () => {
+    if (online) {
+      if (!confirm("코인과 물건이 모두 사라지고 10억으로 다시 시작해요. 되돌릴 수 없어요. 괜찮을까요?")) return;
+      if (await server("flex_reset", {})) { renderAll(); toast("10억으로 다시 시작해요!"); }
+      return;
+    }
     if (!confirm("코인과 물건이 모두 사라지고 100억으로 다시 시작해요. 괜찮을까요?")) return;
     state = fresh(); save(); renderAll(); toast("100억으로 다시 시작해요!");
   });
 
+  // ---------- Login / sign-up ----------
+  let authMode = "login";
+  function setAuthMode(mode) {
+    authMode = mode;
+    for (const b of $("authTabs").children) b.classList.toggle("on", b.dataset.mode === mode);
+    $("aNick").hidden = mode !== "signup";
+    $("aNick").required = mode === "signup";
+    $("aPass").autocomplete = mode === "signup" ? "new-password" : "current-password";
+    $("aSubmit").textContent = mode === "signup" ? "가입하고 10억 받기" : "로그인";
+    setAuthMsg("");
+  }
+  function setAuthMsg(text, ok = false) { $("aMsg").textContent = text; $("aMsg").className = "msg" + (ok ? " ok" : ""); }
+  function authErrorText(error) {
+    const m = error?.message || String(error);
+    if (/Invalid login credentials/i.test(m)) return "이메일 또는 비밀번호가 맞지 않아요.";
+    if (/already registered|already been registered/i.test(m)) return "이미 가입된 이메일이에요. 로그인해 주세요.";
+    if (/Password should be at least/i.test(m)) return "비밀번호는 6자 이상이어야 해요.";
+    if (/Email not confirmed/i.test(m)) return "이메일 인증을 먼저 완료해 주세요. 받은 메일함을 확인해 주세요.";
+    if (/Database error saving new user/i.test(m)) return "이미 사용 중인 닉네임이에요. 다른 닉네임을 입력해 주세요.";
+    if (/rate limit/i.test(m)) return "요청이 너무 많아요. 잠시 후 다시 시도해 주세요.";
+    if (/valid email|invalid format/i.test(m)) return "이메일 주소 형식을 확인해 주세요.";
+    return m;
+  }
+  const openAuth = mode => { setAuthMode(mode); $("auth").classList.add("on"); };
+  $("authTabs").addEventListener("click", e => { const b = e.target.closest("[data-mode]"); if (b) setAuthMode(b.dataset.mode); });
+  $("aClose").addEventListener("click", () => $("auth").classList.remove("on"));
+  $("guestLogin").addEventListener("click", () => openAuth("signup"));
+  $("acctBtn").addEventListener("click", () => online ? showView("wallet") : openAuth("login"));
+  $("logoutBtn").addEventListener("click", () => sb?.auth.signOut());
+  $("authForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    if (!sb) { setAuthMsg("서버에 연결할 수 없어요. 인터넷 연결을 확인하고 새로고침해 주세요."); return; }
+    const email = $("aEmail").value.trim(), password = $("aPass").value, btn = $("aSubmit");
+    btn.disabled = true;
+    try {
+      if (authMode === "signup") {
+        const nickname = $("aNick").value.trim();
+        if (nickname.length < 2 || nickname.length > 12) { setAuthMsg("닉네임은 2~12자로 입력해 주세요."); return; }
+        const { data: available, error: nickErr } = await sb.rpc("nickname_available", { p_nickname: nickname });
+        if (nickErr) throw nickErr;
+        if (!available) { setAuthMsg("이미 사용 중인 닉네임이에요. 다른 닉네임을 입력해 주세요."); return; }
+        const { data, error } = await sb.auth.signUp({ email, password, options: { data: { nickname }, emailRedirectTo: location.href.split("?")[0] } });
+        if (error) throw error;
+        if (!data.session) { setAuthMode("login"); setAuthMsg("가입 확인 메일을 보냈어요. 메일의 링크를 누른 뒤 로그인해 주세요.", true); }
+      } else {
+        const { error } = await sb.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+      }
+    } catch (err) {
+      setAuthMsg(authErrorText(err));
+    } finally { btn.disabled = false; }
+  });
+
+  function renderAccount() {
+    $("acctBtn").textContent = online ? (state.nickname || "내 계정") : "로그인";
+    $("guestBar").classList.toggle("on", !online);
+    $("logoutBtn").hidden = !online;
+    $("resetBtn").textContent = online ? "처음부터 다시 시작 (10억으로 초기화)" : "처음부터 다시 시작 (100억으로 초기화)";
+  }
+  async function onSession(session) {
+    const id = session?.user.id || null;
+    if (id === userId) return;   // getSession and INITIAL_SESSION report the same session
+    userId = id;
+    if (!id) {
+      online = false; state = load(); selectedItem = null;
+      renderAccount(); renderAll();
+      return;
+    }
+    $("auth").classList.remove("on");
+    const { data, error } = await sb.rpc("flex_state");
+    if (error || userId !== id) { if (error) toast("계정 정보를 불러오지 못했어요: " + error.message); return; }
+    online = true; state = fromServer(data); selectedItem = null;
+    renderAccount(); renderAll();
+  }
+
+  renderAccount();
   renderAll();
+  if (sb) {
+    sb.auth.onAuthStateChange((_event, session) => { setTimeout(() => onSession(session), 0); });
+    sb.auth.getSession().then(({ data }) => onSession(data.session));
+  }
   loadMarkets().then(poll);
   setInterval(poll, POLL_MS);
   setInterval(() => { if ($("view-world").classList.contains("on")) renderWorld(); }, 60_000);
