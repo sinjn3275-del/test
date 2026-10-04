@@ -95,6 +95,10 @@
   .paintbar .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px; }
   .paintbar .mats { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 7px; }
   .paintbar .mats button { border: 2px solid transparent; background: var(--panel-2); border-radius: 12px; padding: 6px 4px; color: var(--text); font-size: 11.5px; font-weight: 700; display: grid; justify-items: center; gap: 3px; }
+  .paintbar .etabs { display: flex; gap: 6px; margin-bottom: 9px; }
+  .paintbar .etabs button { flex: 1; border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); border-radius: 10px; padding: 7px 4px; font-size: 13px; font-weight: 700; }
+  .paintbar .etabs button.on { color: var(--text); border-color: var(--text); }
+  .paintbar .mats button em { font-style: normal; font-size: 22px; line-height: 22px; }
   .paintbar .mats button i { width: 34px; height: 22px; border-radius: 6px; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .18); }
   .paintbar .mats button small { color: var(--muted); font-weight: 600; font-size: 10.5px; }
   .paintbar .mats button.on { border-color: var(--text); background: #2a3555; }
@@ -478,6 +482,8 @@
     { id: "watch", name: "시계" },
     { id: "house", name: "집" },
     { id: "special", name: "요트·전용기" },
+    { id: "garden", name: "조경" },
+    { id: "statue", name: "조각상" },
   ];
   const ITEMS = [
     { id: "car-mini", cat: "car", name: "귀요미 경차", price: 15_000_000, art: ["car", "mini", "#7fd1ae"] },
@@ -543,7 +549,7 @@
   const cls = r => r > 0 ? "up" : r < 0 ? "down" : "flat";
 
   // ---------- State (saved in this browser) ----------
-  const fresh = () => ({ cash: START_CASH, coins: {}, items: [], place: {}, floor: {}, log: [], orders: [], created: Date.now() });
+  const fresh = () => ({ cash: START_CASH, coins: {}, items: [], place: {}, floor: {}, decor: [], log: [], orders: [], created: Date.now() });
   function load() {
     try {
       const s = JSON.parse(localStorage.getItem(STORE_KEY));
@@ -580,7 +586,7 @@
     try {
       const { data, error } = await sb.rpc(fn, args);
       if (error) { toast(error.message); return false; }
-      state = fromServer({ floor: state.floor, ...data });   // floor comes separately (flex_floor)
+      state = fromServer({ floor: state.floor, decor: state.decor, ...data });   // the town comes separately (flex_town)
       setTimeout(() => loadDaily(true), 0);   // mission progress may have changed
       return true;
     } catch (e) {
@@ -646,7 +652,7 @@
 
   // ---------- Totals ----------
   const coinValue = () => Object.entries(state.coins).reduce((s, [m, h]) => s + (prices[m] ? h.qty * prices[m].price : h.cost), 0);
-  const itemValue = () => state.items.reduce((s, id) => s + Math.floor((ITEM_BY_ID[id]?.price || 0) * RESALE), 0);
+  const itemValue = () => state.items.reduce((s, id) => s + Math.floor((ITEM_BY_ID[id]?.price || 0) * RESALE), 0) + decorValue();
   const orderValue = () => (state.orders || []).reduce((s, o) => s + (o.side === "buy" ? Number(o.krw) : 0), 0);
   const totalWorth = () => state.cash + coinValue() + itemValue() + orderValue();
   const owns = id => state.items.includes(id);
@@ -929,7 +935,7 @@
   // Keep every placeable owned item on a valid, unique tile.
   function ensurePlacement() {
     state.place = state.place || {};
-    const placed = new Set();
+    const placed = new Set((state.decor || []).map(d => d.at));
     for (const [id, k] of Object.entries(state.place)) {
       const item = ITEM_BY_ID[id], [i, j] = parseKey(k);
       if (!owns(id) || !placeable(item) || terrain(i, j) !== needs(item) || placed.has(k)) delete state.place[id];
@@ -969,7 +975,7 @@
     for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
       const [cx, cy] = pt(0, 0, i, j), k = tileKey(i, j), t = terrain(i, j);
       const diamond = [pt(cx, cy, -.5, -.5), pt(cx, cy, .5, -.5), pt(cx, cy, .5, .5), pt(cx, cy, -.5, .5)];
-      const fc = FLOOR_COLORS[(paintDraft || state.floor)?.[k] || "dirt"] || FLOOR_COLORS.dirt;
+      const fc = FLOOR_COLORS[(edit?.floor || state.floor)?.[k] || "dirt"] || FLOOR_COLORS.dirt;
       const base = t === "water" ? (night ? "#1d3b6a" : "#4ea8de") : shade(fc, (night ? .45 : 1) * ((i + j) % 2 ? .94 : 1));
       const target = sel ? t === needs(sel) && k !== state.place[sel.id] : selectedItem === ME && t !== "water" && !byTile[k] && k !== avatarPos();
       ground += `<g data-t="${k}">` + poly(diamond, base, `stroke="${night ? "rgba(255,255,255,.06)" : "rgba(0,0,0,.08)"}"`);
@@ -1001,93 +1007,157 @@
     const g = e.target.closest("[data-t]");
     if (g) tapTile(g.dataset.t);
   }
+  const decorAt = (k, list = state.decor) => list.find(d => d.at === k);
+  const itemAt = k => Object.keys(state.place).find(id => state.place[id] === k);
   function tapTile(k) {
-    if (paintWith) { paintTile(k === ME ? avatarPos() : k); return; }
+    if (edit) { editTile(k === ME ? avatarPos() : k); return; }
     if (k === ME) { selectedItem = selectedItem === ME ? null : ME; renderWorld(); return; }
-    const [i, j] = parseKey(k), here = Object.keys(state.place).find(id => state.place[id] === k);
+    const [i, j] = parseKey(k), here = itemAt(k), dHere = decorAt(k);
     if (!selectedItem) {
       if (here) { selectedItem = here; renderWorld(); }
+      else if (dHere) { selectedItem = "d:" + dHere.rid; renderWorld(); }
       return;
     }
     if (selectedItem === ME) {
       if (terrain(i, j) === "water") { toast("캐릭터는 강에 들어갈 수 없어요"); return; }
-      if (here) { toast("물건이 없는 빈 칸을 눌러주세요"); return; }
+      if (here || dHere) { toast("물건이 없는 빈 칸을 눌러주세요"); return; }
       state.avatar = { ...(state.avatar || {}), pos: k };
       selectedItem = null; save(); renderWorld();
       return;
     }
+    if (selectedItem.startsWith("d:")) {
+      const d = state.decor.find(x => "d:" + x.rid === selectedItem);
+      if (!d || d.at === k) { selectedItem = null; renderWorld(); return; }
+      if (terrain(i, j) === "water") { toast("땅 위에만 놓을 수 있어요"); return; }
+      if (here || dHere || k === avatarPos()) { toast("빈 칸을 눌러주세요"); return; }
+      d.at = k; selectedItem = null;
+      if (online) sb.rpc("flex_move_decor", { p_moves: { [d.rid]: k } }).then(({ error }) => { if (error) toast("저장하지 못했어요: " + error.message); });
+      else save();
+      renderWorld();
+      return;
+    }
     const item = ITEM_BY_ID[selectedItem];
     if (here === selectedItem) { selectedItem = null; renderWorld(); return; }
-    if (terrain(i, j) !== needs(item)) { toast(needs(item) === "water" ? "배는 강 위에만 둘 수 있어요" : "땅(초록색 칸)에만 둘 수 있어요"); return; }
+    if (terrain(i, j) !== needs(item)) { toast(needs(item) === "water" ? "배는 강 위에만 둘 수 있어요" : "땅 위에만 둘 수 있어요"); return; }
+    if (dHere) { toast("조경·조각상이 있는 칸이에요"); return; }
     if (here) state.place[here] = state.place[selectedItem]; // swap
     state.place[selectedItem] = k;
     selectedItem = null; save(); renderWorld();
   }
 
-  // ---------- Floor paving (바닥 깔기) ----------
-  // FLOORS comes from town3d.js; until it loads only bare dirt is known.
-  let FLOORS = [], FLOOR_COLORS = { dirt: "#9c6b43" };
-  // Paving is a draft: try materials freely (within cash), pay only when 완료 is pressed.
-  let paintWith = null;            // material id while the paint panel is open
-  let paintDraft = null;           // { "i,j": material } being tried out; state.floor stays the saved floor
+  // ---------- Town editor: floor + 조경·조각상 (꾸미기) ----------
+  // FLOORS / DECOR come from town3d.js / decor3d.js; until they load only bare dirt is known.
+  let FLOORS = [], FLOOR_COLORS = { dirt: "#9c6b43" }, DECOR = [];
+  // Editing is a draft: try things freely (within cash), pay only when 완료 is pressed.
+  // edit = { tab: "floor" | "garden" | "statue", mat, pick, floor: {...}, decor: [{ rid, id, at }] }
+  // New pieces get rid "n1", "n2", ...; state.floor / state.decor stay the saved town.
+  let edit = null, newRid = 0;
   const floorPrice = id => FLOORS.find(f => f.id === id)?.price ?? 0;
-  const draftChanges = () => {
-    const out = {};
+  const decorItem = id => DECOR.find(d => d.id === id);
+  const decorValue = () => (state.decor || []).reduce((s, d) => s + Math.floor((decorItem(d.id)?.price || 0) * RESALE), 0);
+  function editDiff() {
+    const floor = {};
     for (let i = 0; i < N; i++) for (let j = 0; j < RIVER_J; j++) {
-      const k = tileKey(i, j), was = state.floor[k] || "dirt", now = paintDraft[k] || "dirt";
-      if (was !== now) out[k] = now;
+      const k = tileKey(i, j), was = state.floor[k] || "dirt", now = edit.floor[k] || "dirt";
+      if (was !== now) floor[k] = now;
     }
-    return out;
-  };
-  const draftCost = () => Object.values(draftChanges()).reduce((a, id) => a + floorPrice(id), 0);
-  function paintTile(k) {
+    const add = edit.decor.filter(d => String(d.rid).startsWith("n"));
+    const remove = state.decor.filter(d => !edit.decor.includes(d));
+    const floorCost = Object.values(floor).reduce((a, id) => a + floorPrice(id), 0);
+    const addCost = add.reduce((a, d) => a + (decorItem(d.id)?.price || 0), 0);
+    const refund = remove.reduce((a, d) => a + Math.floor((decorItem(d.id)?.price || 0) * RESALE), 0);
+    return { floor, add, remove, floorCost, addCost, refund, net: floorCost + addCost - refund };
+  }
+  function editTile(k) {
     const [i, j] = parseKey(k);
-    if (terrain(i, j) === "water") { toast("강에는 바닥을 깔 수 없어요"); return; }
-    const saved = state.floor[k] || "dirt", cur = paintDraft[k] || "dirt";
-    // Tapping a tile I just changed to this material undoes it.
-    const next = cur === paintWith && cur !== saved ? saved : paintWith;
-    if (next === cur) return;
-    const set = id => { if (id === "dirt") delete paintDraft[k]; else paintDraft[k] = id; };
-    set(next);
-    if (draftCost() > state.cash) { set(cur); toast(`현금이 부족해요 (보유 ${wonShort(state.cash)}원)`); return; }
+    if (terrain(i, j) === "water") { toast(edit.tab === "floor" ? "강에는 바닥을 깔 수 없어요" : "땅 위에만 놓을 수 있어요"); return; }
+    const undo = [];
+    if (edit.tab === "floor") {
+      const saved = state.floor[k] || "dirt", cur = edit.floor[k] || "dirt";
+      // Tapping a tile I just changed to this material undoes it.
+      const next = cur === edit.mat && cur !== saved ? saved : edit.mat;
+      if (next === cur) return;
+      const set = id => { if (id === "dirt") delete edit.floor[k]; else edit.floor[k] = id; };
+      set(next); undo.push(() => set(cur));
+    } else {
+      const d = decorAt(k, edit.decor), list = edit.decor;
+      if (d) {
+        // New piece: cancel it. Saved piece: take it away (90% back).
+        edit.decor = list.filter(x => x !== d); undo.push(() => { edit.decor = list; });
+      } else {
+        if (itemAt(k)) { toast("집·차가 있는 칸이에요"); return; }
+        if (k === avatarPos()) { toast("캐릭터가 서 있는 칸이에요"); return; }
+        if (!edit.pick) { toast("놓을 것을 먼저 골라주세요"); return; }
+        const gone = decorAt(k);   // a saved piece taken away here: same pick puts it back
+        const piece = gone && gone.id === edit.pick ? gone : { rid: "n" + ++newRid, id: edit.pick, at: k };
+        edit.decor = [...list, piece]; undo.push(() => { edit.decor = list; });
+      }
+    }
+    if (editDiff().net > state.cash) { undo.forEach(f => f()); toast(`현금이 부족해요 (보유 ${wonShort(state.cash)}원)`); return; }
     renderWorld();
   }
-  async function finishPaint() {
-    const changes = draftChanges(), n = Object.keys(changes).length, cost = draftCost();
-    if (!n) { closePaint(); return; }
-    if (cost > state.cash) { toast("현금이 부족해요"); return; }
-    if (!confirm(`바닥 ${n}칸을 바꾸고 ${won(cost)}이 빠져나가요.\n완료 후에는 취소할 수 없어요. 계속할까요?`)) return;
+  async function finishEdit() {
+    const d = editDiff(), nFloor = Object.keys(d.floor).length;
+    if (!nFloor && !d.add.length && !d.remove.length) { closeEdit(); return; }
+    if (d.net > state.cash) { toast("현금이 부족해요"); return; }
+    const lines = [];
+    if (nFloor) lines.push(`바닥 ${nFloor}칸 ${wonShort(d.floorCost)}원`);
+    if (d.add.length) lines.push(`새로 놓기 ${d.add.length}개 ${wonShort(d.addCost)}원`);
+    if (d.remove.length) lines.push(`철거 ${d.remove.length}개 +${wonShort(d.refund)}원 돌려받기`);
+    const total = d.net >= 0 ? `${won(d.net)}이 빠져나가요.` : `${won(-d.net)}을 돌려받아요.`;
+    if (!confirm(`${lines.join("\n")}\n\n${total}\n완료 후에는 취소할 수 없어요. 계속할까요?`)) return;
     if (online) {
-      if (!await server("flex_paint_floor", { p_paint: changes })) return;
+      const ok = await server("flex_edit_town", { p_floor: d.floor, p_add: d.add.map(x => ({ id: x.id, at: x.at })), p_remove: d.remove.map(x => x.rid) });
+      if (!ok) return;
     } else {
-      state.cash -= cost; state.floor = { ...paintDraft };
-      if (cost) log(`바닥 ${n}칸 깔기 -${wonShort(cost)}원`);
+      state.cash -= d.net;
+      state.floor = { ...edit.floor };
+      state.decor = edit.decor.map(x => String(x.rid).startsWith("n") ? { ...x, rid: Date.now() + Math.random() } : x);
+      log(`꾸미기 ${d.net >= 0 ? "-" : "+"}${wonShort(Math.abs(d.net))}원`);
       save();
     }
-    closePaint(); renderHeader();
-    toast(cost ? `바닥 완성! ${won(cost)}을 썼어요` : "바닥을 바꿨어요");
+    closeEdit(); renderHeader();
+    toast(d.net > 0 ? `완성! ${won(d.net)}을 썼어요` : "완성!");
   }
-  function closePaint() { paintWith = null; paintDraft = null; renderWorld(); }
-  async function loadFloor() {
-    const { data, error } = await sb.rpc("flex_floor");
-    state.floor = !error && data && typeof data === "object" ? data : {};
+  function openEdit(tab = "floor", pick = null) {
+    selectedItem = null; newRid = 0;
+    edit = { tab, mat: "grass", pick, floor: { ...state.floor }, decor: [...state.decor] };
+    renderWorld();
   }
+  function closeEdit() { edit = null; renderWorld(); }
+  async function loadTown() {
+    let { data, error } = await sb.rpc("flex_town");
+    if (error) ({ data, error } = await sb.rpc("flex_floor").then(r => ({ ...r, data: r.data && { floor: r.data } })));   // flex-decor.sql not run yet
+    state.floor = !error && data?.floor && typeof data.floor === "object" ? data.floor : {};
+    state.decor = !error && Array.isArray(data?.decor) ? data.decor : [];
+  }
+  const EDIT_TABS = [["floor", "🧱 바닥"], ["garden", "🌳 조경"], ["statue", "🗿 조각상"]];
   function renderPaintBar() {
     const bar = $("paintBar");
     if (!town || !FLOORS.length) { bar.innerHTML = ""; return; }
-    if (!paintWith) { bar.innerHTML = `<button class="open" id="paintOpen">🧱 바닥 깔기 · 잔디·대리석·황금 타일</button>`; return; }
-    const n = Object.keys(draftChanges()).length, cost = draftCost();
-    bar.innerHTML = `<div class="panel"><div class="mats">${FLOORS.map(f =>
-      `<button data-mat="${f.id}" class="${f.id === paintWith ? "on" : ""}"><i style="background:${f.color}"></i>${esc(f.name)}<small>${f.price ? wonShort(f.price) + "원" : "되돌리기"}</small></button>`).join("")}</div>
-      <div class="foot"><span>${n ? `바꾼 칸 <b>${n}</b> · 합계 <b>${wonShort(cost)}원</b><br>보유 현금 ${wonShort(state.cash)}원` : "칸을 눌러 깔아보세요. 같은 칸을 한 번 더 누르면 취소돼요.<br>완료를 눌러야 돈이 빠져나가요."}</span>
-      <span class="btns"><button class="ghost" id="paintCancel">취소</button><button id="paintDone">완료</button></span></div></div>`;
+    if (!edit) { bar.innerHTML = `<button class="open" id="editOpen">🛠️ 꾸미기 · 바닥·나무·분수·조각상</button>`; return; }
+    const d = editDiff(), changed = Object.keys(d.floor).length + d.add.length + d.remove.length;
+    const chips = edit.tab === "floor"
+      ? FLOORS.map(f => `<button data-mat="${f.id}" class="${f.id === edit.mat ? "on" : ""}"><i style="background:${f.color}"></i>${esc(f.name)}<small>${f.price ? wonShort(f.price) + "원" : "되돌리기"}</small></button>`)
+      : DECOR.filter(x => x.cat === edit.tab).map(x => `<button data-pick="${x.id}" class="${x.id === edit.pick ? "on" : ""}"><em>${x.icon}</em>${esc(x.name)}<small>${wonShort(x.price)}원</small></button>`);
+    const help = edit.tab === "floor"
+      ? "칸을 눌러 깔아보세요. 같은 칸을 한 번 더 누르면 취소돼요."
+      : "고른 걸 빈 칸에 놓아보세요. 놓인 걸 누르면 빠져요(원래 있던 건 90% 돌려받아요).";
+    bar.innerHTML = `<div class="panel"><div class="etabs">${EDIT_TABS.map(([id, nm]) => `<button data-etab="${id}" class="${id === edit.tab ? "on" : ""}">${nm}</button>`).join("")}</div>
+      <div class="mats">${chips.join("")}</div>
+      <div class="foot"><span>${changed ? `바꾼 것 <b>${changed}</b> · 합계 <b>${d.net >= 0 ? "" : "+"}${wonShort(Math.abs(d.net))}원</b><br>보유 현금 ${wonShort(state.cash)}원` : `${help}<br>완료를 눌러야 돈이 빠져나가요.`}</span>
+      <span class="btns"><button class="ghost" id="editCancel">취소</button><button id="editDone">완료</button></span></div></div>`;
   }
   $("paintBar").addEventListener("click", e => {
-    if (e.target.closest("#paintOpen")) { selectedItem = null; paintWith = "grass"; paintDraft = { ...state.floor }; renderWorld(); return; }
-    if (e.target.closest("#paintCancel")) { closePaint(); return; }
-    if (e.target.closest("#paintDone")) { finishPaint(); return; }
-    const b = e.target.closest("[data-mat]");
-    if (b) { paintWith = b.dataset.mat; renderPaintBar(); }
+    if (e.target.closest("#editOpen")) { openEdit(); return; }
+    if (e.target.closest("#editCancel")) { closeEdit(); return; }
+    if (e.target.closest("#editDone")) { finishEdit(); return; }
+    const t = e.target.closest("[data-etab]"), m = e.target.closest("[data-mat]"), pk = e.target.closest("[data-pick]");
+    if (t) { edit.tab = t.dataset.etab; if (edit.tab !== "floor" && decorItem(edit.pick)?.cat !== edit.tab) edit.pick = null; }
+    else if (m) edit.mat = m.dataset.mat;
+    else if (pk) edit.pick = pk.dataset.pick;
+    else return;
+    renderPaintBar();
   });
 
   // ---------- Rendering ----------
@@ -1153,16 +1223,17 @@
     const before = JSON.stringify(state.place);
     ensurePlacement();
     if (JSON.stringify(state.place) !== before) save();
-    if (selectedItem && selectedItem !== ME && !state.place[selectedItem]) selectedItem = null;
+    if (selectedItem && selectedItem !== ME && !state.place[selectedItem] && !state.decor.some(d => "d:" + d.rid === selectedItem)) selectedItem = null;
     const sel = selectedItem && ITEM_BY_ID[selectedItem];
-    const occupied = new Set(Object.values(state.place));
+    const occupied = new Set([...Object.values(state.place), ...state.decor.map(d => d.at)]);
+    const selDecor = selectedItem?.startsWith("d:") && state.decor.find(d => "d:" + d.rid === selectedItem);
     if (town) {
       const targets = [];
       if (sel) for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
         const k = tileKey(i, j);
-        if (terrain(i, j) === needs(sel) && k !== state.place[sel.id]) targets.push(k);
+        if (terrain(i, j) === needs(sel) && k !== state.place[sel.id] && !state.decor.some(d => d.at === k)) targets.push(k);
       }
-      if (selectedItem === ME) for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+      if (selectedItem === ME || selDecor) for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
         const k = tileKey(i, j);
         if (terrain(i, j) !== "water" && !occupied.has(k) && k !== avatarPos()) targets.push(k);
       }
@@ -1170,16 +1241,18 @@
       town.setNight(h >= 19 || h < 6);
       town.update({ place: state.place, selected: selectedItem, targets, avatar: state.avatar || {},
         watch: WATCH_COLORS[wornWatch()?.id] || null, showTent: !state.items.some(id => ITEM_BY_ID[id]?.cat === "house"),
-        banner: online ? daily?.banner : null, bubble: online ? daily?.bubble : null, floor: paintDraft || state.floor });
+        banner: online ? daily?.banner : null, bubble: online ? daily?.bubble : null, floor: edit?.floor || state.floor, decor: edit?.decor || state.decor });
       town.start();
     } else $("scene").innerHTML = isoSceneSVG();
     $("moveBar").innerHTML = sel
       ? `<span><b>${esc(sel.name)}</b>을(를) 옮길 칸을 눌러주세요</span> <button id="moveCancel">취소</button>`
       : selectedItem === ME
       ? `<span><b>캐릭터</b>가 걸어갈 빈 칸을 눌러주세요</span> <button id="moveCancel">취소</button>`
+      : selDecor
+      ? `<span><b>${esc(decorItem(selDecor.id)?.name || "")}</b>을(를) 옮길 빈 칸을 눌러주세요</span> <button id="moveCancel">취소</button>`
       : `캐릭터나 물건을 누르면 다른 칸으로 옮길 수 있어요`;
     $("moveBar").classList.toggle("on", !!selectedItem);
-    $("moveBar").style.display = paintWith ? "none" : "";
+    $("moveBar").style.display = edit ? "none" : "";
     renderPaintBar();
     const next = ITEMS.filter(i => !owns(i.id)).sort((a, b) => a.price - b.price).find(i => i.price > state.cash)
       || ITEMS.filter(i => !owns(i.id)).sort((a, b) => b.price - a.price)[0];
@@ -1204,12 +1277,30 @@
     return itemSVG(item, night);
   }
 
+  let decor3d = null;
+  function decorArt(d) {
+    try { if (car3d && decor3d) return `<img src="${car3d.itemThumb("decor:" + d.id, 320, 240, decor3d.decorModel(d.id, { avatar: state.avatar || {} }))}" alt="">`; } catch (e) { /* fall back */ }
+    return `<span style="font-size:54px">${d.icon}</span>`;
+  }
   let shopCat = "car";
   function renderShop() {
     $("shopTitle").textContent = SHOP_NAMES[shopCat] || "쇼핑";
     $("cats").innerHTML = CATS.map(c => `<button data-cat="${c.id}" class="${c.id === shopCat ? "on" : ""}">${c.name}</button>`).join("");
     const [h] = nowHM();
     const night = h >= 19 || h < 6;
+    if (shopCat === "garden" || shopCat === "statue") {
+      $("shopGrid").innerHTML = DECOR.filter(d => d.cat === shopCat).map(d => {
+        const n = state.decor.filter(x => x.id === d.id).length, short = d.price - state.cash;
+        return `<div class="item">
+          <div class="art">${decorArt(d)}</div>
+          <div class="nm">${esc(d.name)}${n ? `<span class="owned-tag">${n}개</span>` : ""}</div>
+          <div class="pr">${won(d.price)}</div>
+          <div class="need">${short > 0 ? `${wonShort(short)}원 부족` : "여러 개 놓을 수 있어요"}</div>
+          <div class="act"><button class="btn" data-place-decor="${d.id}" ${short > 0 ? "disabled" : ""}>${short > 0 ? "돈이 부족해요" : "내 땅에 놓기"}</button></div>
+        </div>`;
+      }).join("") || `<div class="empty">불러오는 중이에요</div>`;
+      return;
+    }
     $("shopGrid").innerHTML = ITEMS.filter(i => i.cat === shopCat).map(i => {
       const own = owns(i.id), short = i.price - state.cash;
       return `<div class="item">
@@ -1253,6 +1344,7 @@
   import("./town3d.js").then(m => {
     townMod = m;
     FLOORS = m.FLOORS; FLOOR_COLORS = Object.fromEntries(FLOORS.map(f => [f.id, f.color]));
+    import("./decor3d.js").then(d => { decor3d = d; DECOR = d.DECOR; renderHeader(); if ($("view-shop").classList.contains("on")) renderShop(); });
     try {
       $("scene").classList.add("is3d");
       town = m.townViewer($("scene"), { onTap: tapTile });
@@ -1364,6 +1456,14 @@
   // ---------- Shop actions ----------
   $("cats").addEventListener("click", e => { const b = e.target.closest("[data-cat]"); if (b) { shopCat = b.dataset.cat; renderShop(); } });
   $("shopGrid").addEventListener("click", e => {
+    const pd = e.target.closest("[data-place-decor]");
+    if (pd) {
+      const d = decorItem(pd.dataset.placeDecor);
+      showView("world"); openEdit(d.cat, d.id);
+      $("scene").scrollIntoView({ behavior: "smooth", block: "start" });
+      toast(`${d.name}을(를) 놓을 빈 칸을 눌러주세요`);
+      return;
+    }
     const buy = e.target.closest("[data-buy-item]"), sell = e.target.closest("[data-sell-item]");
     if (online && (buy || sell)) {
       const item = ITEM_BY_ID[(buy || sell).dataset[buy ? "buyItem" : "sellItem"]];
@@ -1568,8 +1668,8 @@
   });
   async function openVisit(nickname) {
     if (!sb) return;
-    const [{ data: v, error }, { data: vFloor }] = await Promise.all([
-      sb.rpc("flex_visit", { p_nickname: nickname }), sb.rpc("flex_floor", { p_nickname: nickname })]);
+    const [{ data: v, error }, { data: vTown }] = await Promise.all([
+      sb.rpc("flex_visit", { p_nickname: nickname }), sb.rpc("flex_town", { p_nickname: nickname })]);
     if (error || !v) { toast("동네를 불러오지 못했어요"); return; }
     $("vName").textContent = v.nickname + "님의 동네";
     $("vWorth").textContent = v.worth != null ? "총 재산 " + wonShort(v.worth) + "원" : "";
@@ -1593,7 +1693,7 @@
     if (!visitView) visitView = townMod.townViewer($("vStage"));
     const [h] = nowHM();
     visitView.setNight(h >= 19 || h < 6);
-    visitView.update({ place: v.place || {}, avatar: v.avatar || {}, floor: vFloor || {}, banner: v.banner, bubble: v.bubble, showTent: !(v.items || []).some(id => ITEM_BY_ID[id]?.cat === "house") });
+    visitView.update({ place: v.place || {}, avatar: v.avatar || {}, floor: vTown?.floor || {}, decor: vTown?.decor || [], banner: v.banner, bubble: v.bubble, showTent: !(v.items || []).some(id => ITEM_BY_ID[id]?.cat === "house") });
     if (online) loadDaily(true);
     visitView.start();
   }
@@ -1671,7 +1771,7 @@
 
   // ---------- 청담 플렉스 거리 (street3d.js, supabase/flex-street.sql) ----------
   let street = null, streetMod = null, streetAt = 0;
-  const SHOP_NAMES = { car: "자동차 매장", watch: "시계 부티크", house: "플렉스 부동산", special: "요트·전용기 라운지" };
+  const SHOP_NAMES = { car: "자동차 매장", watch: "시계 부티크", house: "플렉스 부동산", special: "요트·전용기 라운지", garden: "가든 센터", statue: "조각 갤러리" };
   function goShop(cat) { shopCat = cat; showView("shop"); }
   async function openStreet() {
     if (!streetMod) {
@@ -1790,15 +1890,15 @@
     if (id === userId) return;   // getSession and INITIAL_SESSION report the same session
     userId = id;
     if (!id) {
-      online = false; state = load(); selectedItem = null; paintWith = null; paintDraft = null;
+      online = false; state = load(); selectedItem = null; edit = null;
       renderAccount(); renderAll();
       return;
     }
     $("auth").classList.remove("on");
     const { data, error } = await sb.rpc("flex_state");
     if (error || userId !== id) { if (error) toast("계정 정보를 불러오지 못했어요: " + error.message); return; }
-    online = true; state = fromServer(data); selectedItem = null; paintWith = null; paintDraft = null;
-    await loadFloor();
+    online = true; state = fromServer(data); selectedItem = null; edit = null;
+    await loadTown();
     if (userId !== id) return;
     renderAccount(); renderAll();
   }

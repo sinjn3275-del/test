@@ -346,11 +346,11 @@ function getStudio() {
   scene.add(studio.holder);
   return studio;
 }
-// Shows any item, scaled to fit and with the camera framed on it.
-function stage(id) {
+// Shows any item (or a given model), scaled to fit and with the camera framed on it.
+function stage(id, model) {
   const s = getStudio();
   s.holder.clear();
-  const m = itemModel(id);
+  const m = model || itemModel(id);
   if (!m) return null;
   const size = new THREE.Box3().setFromObject(m).getSize(new THREE.Vector3());
   const k = 1 / Math.max(size.x, size.z, size.y * 0.8, 0.3);
@@ -365,10 +365,11 @@ function stage(id) {
 }
 
 const thumbs = {};
-// Still image of an item for shop cards (rendered once, then cached).
-export function itemThumb(id, w = 320, h = 240) {
+// Still image of an item for shop cards (rendered once, then cached). `model` renders
+// something that isn't in itemModel (e.g. 조경·조각상), cached under `id`.
+export function itemThumb(id, w = 320, h = 240, model = null) {
   if (thumbs[id]) return thumbs[id];
-  const s = stage(id);
+  const s = stage(id, model);
   if (!s) return null;
   s.renderer.setSize(w, h, false);
   s.camera.aspect = w / h; s.camera.updateProjectionMatrix();

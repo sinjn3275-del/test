@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { itemModel, windowMat, textTexture } from "./models3d.js";
 import { avatarModel } from "./avatar3d.js";
+import { decorModel } from "./decor3d.js";
 
 export const N = 7, RIVER_J = N - 1;
 export const terrain = (i, j) => j === RIVER_J ? "water" : "land";
@@ -152,19 +153,31 @@ export function townViewer(el, { onTap } = {}) {
   };
 
   // place: { itemId: "i,j" }, selected: itemId | "@me" | null, targets: ["i,j"], avatar: cfg (avatar.pos = "i,j"), watch: color | null,
-  // floor: { "i,j": material } (missing = dirt)
+  // floor: { "i,j": material } (missing = dirt), decor: [{ rid, id, at: "i,j" }] (selected "d:<rid>" lifts one)
   const sprite = (lines, opts, sx, sy) => {
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: textTexture(lines, opts), depthTest: false }));
     s.scale.set(sx, sy, 1); s.renderOrder = 10;
     return s;
   };
   // banner: 현수막 text over the back of the island; bubble: 말풍선 over the avatar.
-  function update({ place = {}, selected = null, targets = [], avatar = {}, watch = null, showTent = false, banner = null, bubble = null, floor = {} } = {}) {
+  function update({ place = {}, selected = null, targets = [], avatar = {}, watch = null, showTent = false, banner = null, bubble = null, floor = {}, decor = [] } = {}) {
     for (const m of tiles) if (terrain(...m.userData.key.split(",").map(Number)) === "land") m.material = floorMat(floor[m.userData.key] || "dirt");
     scene.remove(dyn);
     dyn = new THREE.Group();
     animated = []; selGroup = null; items = []; me = null;
-    const taken = new Set(Object.values(place));
+    const taken = new Set([...Object.values(place), ...decor.map(d => d.at)]);
+    for (const d of decor) {
+      const g = decorModel(d.id, { avatar });
+      if (!g) continue;
+      const [i, j] = d.at.split(",").map(Number);
+      g.position.set(tileX(i), 0.1, tileZ(j));
+      g.rotation.y = d.id.startsWith("statue") ? Math.PI / 4 : 0;
+      g.userData.base = g.position.y;
+      g.traverse(o => { o.userData.key = d.at; });
+      dyn.add(g); items.push(g);
+      if (g.userData.tick) animated.push(g);
+      if (selected === "d:" + d.rid) selGroup = g;
+    }
     for (const [id, key] of Object.entries(place)) {
       const [i, j] = key.split(",").map(Number);
       const g = townModel(id);
@@ -179,6 +192,8 @@ export function townViewer(el, { onTap } = {}) {
     if (showTent && !taken.has("1,4")) { const t = tent(); t.position.set(tileX(1), 0.1, tileZ(4)); t.traverse(o => { o.userData.key = "1,4"; }); dyn.add(t); }
     for (const key of targets) dyn.add(hl(key, 0xe7c26a, 0.45));
     if (selected && place[selected]) dyn.add(hl(place[selected], 0xffd166, 0.8));
+    const selDecor = decor.find(d => selected === "d:" + d.rid);
+    if (selDecor) dyn.add(hl(selDecor.at, 0xffd166, 0.8));
     // The avatar stands on its own tile (avatar.pos) and walks there when it changes.
     const pos = /^[0-6],[0-6]$/.test(avatar.pos || "") ? avatar.pos : AVATAR_TILE.join(",");
     const [ai, aj] = pos.split(",").map(Number);
@@ -259,6 +274,7 @@ export function townViewer(el, { onTap } = {}) {
   const loop = () => {
     const t = clock.getElapsedTime();
     for (const g of animated) {
+      if (g.userData.tick) g.userData.tick(t);
       if (g.userData.spin) g.userData.spin.rotation.y = t * 12;
       if (g.userData.bob) { g.position.y = Math.sin(t * 1.5) * 0.03; g.rotation.z = Math.sin(t * 1.1) * 0.04; }
       if (g.userData.float) g.userData.float.position.y = 0.55 + Math.sin(t * 0.8) * 0.12;
