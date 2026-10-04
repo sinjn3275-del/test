@@ -395,6 +395,13 @@
   }
   let state = load();
   function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* ignore */ } }
+  // Another tab of the game saved: take its state, so this tab's older copy never overwrites it.
+  addEventListener("storage", e => {
+    if (e.key !== STORE_KEY) return;
+    state = load();
+    selectedItem = null;
+    renderAll();
+  });
   function log(text) { state.log.unshift({ t: Date.now(), text }); state.log = state.log.slice(0, 40); }
 
   // ---------- Live coin prices ----------
@@ -846,7 +853,9 @@
   }
 
   function renderWorld() {
-    ensurePlacement(); save();
+    const before = JSON.stringify(state.place);
+    ensurePlacement();
+    if (JSON.stringify(state.place) !== before) save();
     if (selectedItem && !state.place[selectedItem]) selectedItem = null;
     const sel = selectedItem && ITEM_BY_ID[selectedItem];
     if (town) {
