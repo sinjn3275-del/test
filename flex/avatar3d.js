@@ -46,7 +46,8 @@ function mesh(geo, color, x = 0, y = 0, z = 0, extra) {
 // Box whose bottom sits at y.
 const box = (w, h, d, c, x, y, z, extra) => mesh(new THREE.BoxGeometry(w, h, d), c, x, y + h / 2, z, extra);
 const shade = (hex, f) => "#" + new THREE.Color(hex).multiplyScalar(f).getHexString();
-const GOLD = { metalness: 0.8, roughness: 0.3 };
+// Low metalness: with no environment map, very metallic surfaces render almost black.
+const GOLD = { metalness: 0.3, roughness: 0.35 };
 
 // About 1.8 units tall, facing +z, feet on y = 0. `watch` is a color or null.
 export function avatarModel(cfg, watch) {
@@ -104,8 +105,9 @@ export function avatarModel(cfg, watch) {
     if (shortSleeve) arm.add(box(0.095, 0.24, 0.1, skin, 0, -0.42, 0));
     arm.add(box(0.09, 0.09, 0.1, skin, 0, -0.51, 0));                                                       // hand
     if (s === -1 && watch) {
-      arm.add(box(0.105, 0.04, 0.115, "#22252b", 0, -0.425, 0));
-      arm.add(box(0.06, 0.05, 0.02, watch, 0, -0.43, 0.06, GOLD));
+      arm.add(box(0.115, 0.05, 0.125, "#22252b", 0, -0.43, 0));                                            // strap
+      arm.add(box(0.1, 0.085, 0.03, watch, 0, -0.447, 0.065, { ...GOLD, emissive: watch, emissiveIntensity: 0.25 }));  // case
+      arm.add(box(0.065, 0.055, 0.01, "#f4f1e8", 0, -0.432, 0.082));                                         // dial
     }
     g.add(arm);
   }
