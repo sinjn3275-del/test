@@ -69,6 +69,7 @@
   /* World */
   .scene { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); background: #1b2a4a; }
   .scene svg { display: block; width: 100%; height: auto; }
+  .scene.is3d { aspect-ratio: 1 / 1; max-height: 62vh; width: 100%; }
   .movebar { margin-top: 8px; font-size: 12.5px; color: var(--muted); text-align: center; min-height: 30px; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 10px; padding: 4px 8px; }
   .movebar.on { background: rgba(231, 194, 106, .14); color: var(--text); }
   .movebar button { border: 1px solid var(--line); background: var(--panel-2); border-radius: 8px; padding: 4px 10px; font-size: 12px; }
@@ -772,9 +773,12 @@
   }
 
   function onSceneClick(e) {
+    if (town) return;   // the 3D view reports taps itself
     const g = e.target.closest("[data-t]");
-    if (!g) return;
-    const k = g.dataset.t, [i, j] = parseKey(k), here = Object.keys(state.place).find(id => state.place[id] === k);
+    if (g) tapTile(g.dataset.t);
+  }
+  function tapTile(k) {
+    const [i, j] = parseKey(k), here = Object.keys(state.place).find(id => state.place[id] === k);
     if (!selectedItem) {
       if (here) { selectedItem = here; renderWorld(); }
       return;
@@ -844,8 +848,19 @@
   function renderWorld() {
     ensurePlacement(); save();
     if (selectedItem && !state.place[selectedItem]) selectedItem = null;
-    $("scene").innerHTML = isoSceneSVG();
     const sel = selectedItem && ITEM_BY_ID[selectedItem];
+    if (town) {
+      const targets = [];
+      if (sel) for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+        const k = tileKey(i, j);
+        if (terrain(i, j) === needs(sel) && k !== state.place[sel.id]) targets.push(k);
+      }
+      const [h] = nowHM();
+      town.setNight(h >= 19 || h < 6);
+      town.update({ place: state.place, selected: selectedItem, targets, avatar: state.avatar || {},
+        watch: WATCH_COLORS[wornWatch()?.id] || null, showTent: !state.items.some(id => ITEM_BY_ID[id]?.cat === "house") });
+      town.start();
+    } else $("scene").innerHTML = isoSceneSVG();
     $("moveBar").innerHTML = sel
       ? `<b>${esc(sel.name)}</b>을(를) 옮길 칸을 눌러주세요 <button id="moveCancel">취소</button>`
       : `물건을 누르면 다른 칸으로 옮길 수 있어요`;
@@ -914,6 +929,17 @@
     }).join("") : `<div class="empty">기록이 없어요.</div>`;
   }
 
+  // ---------- 3D town (town3d.js); the SVG scene stays as a fallback ----------
+  let town = null;
+  import("./town3d.js").then(m => {
+    try {
+      $("scene").classList.add("is3d");
+      town = m.townViewer($("scene"), { onTap: tapTile });
+      if ($("view-world").classList.contains("on")) renderWorld();
+    } catch (e) { town = null; $("scene").classList.remove("is3d"); renderWorld(); }
+  }).catch(() => {});
+  addEventListener("resize", () => town && $("view-world").classList.contains("on") && town.resize());
+
   // ---------- 3D avatar (avatar3d.js) ----------
   const WATCH_COLORS = { "watch-digital": "#333", "watch-classic": "#cfd5dc", "watch-diver": "#173a73", "watch-gold": "#e2be55", "watch-diamond": "#f4f6fa", "watch-grand": "#d4af37" };
   let av3d = null, avView = null, avPart = "hair";
@@ -969,6 +995,7 @@
     if (v === "shop") renderShop();
     if (v === "wallet") renderWallet();
     if (v === "me") renderMe(); else if (avView) avView.stop();
+    if (v !== "world" && town) town.stop();
     window.scrollTo(0, 0);
   }
 
