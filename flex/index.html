@@ -190,6 +190,23 @@
   .auth .msg { font-size: 12.5px; color: var(--up); min-height: 16px; }
   .auth .msg.ok { color: var(--ok); }
   .auth .close { background: none; border: 0; color: var(--muted); font-size: 13px; padding: 4px; }
+  .rankcard { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; padding: 11px 14px; border-radius: 12px; border: 1px solid rgba(231, 194, 106, .45); background: linear-gradient(90deg, rgba(231, 194, 106, .18), rgba(231, 194, 106, .05)); color: var(--text); font-size: 14px; font-weight: 700; }
+  .rankcard #rankMine { color: var(--gold); font-size: 13px; }
+  .rrow { width: 100%; display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center; padding: 11px 0; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--text); text-align: left; }
+  .rrow:last-child { border-bottom: 0; }
+  .rrow.me { background: rgba(231, 194, 106, .1); margin: 0 -14px; padding: 11px 14px; width: calc(100% + 28px); }
+  .rrow .rk { font-size: 15px; font-weight: 800; text-align: center; color: var(--muted); }
+  .rrow .nm { font-weight: 700; font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rrow small { display: block; color: var(--muted); font-size: 12px; font-weight: 400; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rrow .wv { text-align: right; font-weight: 700; font-size: 14px; }
+  .visit { position: fixed; inset: 0; z-index: 35; display: none; place-items: center; background: rgba(5, 8, 16, .85); padding: 12px; }
+  .visit.on { display: grid; }
+  .visit .vbox { width: min(480px, 100%); background: var(--panel); border: 1px solid var(--gold); border-radius: 18px; padding: 12px; }
+  .visit .vhead { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .visit .vhead b { font-size: 17px; }
+  .visit .vhead span { color: var(--gold); font-weight: 700; font-size: 13px; flex: 1; }
+  .visit .vhead button { border: 1px solid var(--line); background: var(--panel-2); color: var(--text); border-radius: 8px; padding: 6px 12px; }
+  .visit .vstage { aspect-ratio: 1 / 1; max-height: 60vh; width: 100%; border-radius: 12px; overflow: hidden; background: #182038; }
   footer { font-size: 11.5px; color: var(--muted); text-align: center; padding: 24px 0 8px; line-height: 1.6; }
 </style>
 </head>
@@ -219,6 +236,7 @@
 <main class="wrap">
   <div class="guestbar" id="guestBar"><span>지금은 <b>체험 모드</b>예요. 가입하면 <b>10억</b>으로 시작하고, 어느 기기에서든 이어서 할 수 있어요.</span><button id="guestLogin">가입·로그인</button></div>
   <section class="view on" id="view-world">
+    <button class="rankcard" id="rankCard"><span>🏆 플렉스 랭킹</span><span id="rankMine">보러 가기 ›</span></button>
     <div class="scene" id="scene"></div>
     <div class="movebar" id="moveBar"></div>
     <div class="owned-strip" id="ownedStrip"></div>
@@ -237,6 +255,13 @@
     <h2>쇼핑</h2>
     <div class="chips" id="cats"></div>
     <div class="grid" id="shopGrid"></div>
+  </section>
+
+  <section class="view" id="view-rank">
+    <h2>🏆 플렉스 랭킹 <span class="hint" style="font-weight:400">· 총 재산 순</span></h2>
+    <div class="hint" id="rankInfo" style="margin:-4px 2px 10px">불러오는 중…</div>
+    <div class="card" id="rankList"></div>
+    <p class="hint" style="margin-top:10px">이름을 누르면 그 사람 동네를 구경할 수 있어요. 순위는 1분마다 새로 계산돼요.</p>
   </section>
 
   <section class="view" id="view-me">
@@ -302,6 +327,13 @@
   </div>
 </div>
 <div class="toast" id="toast"></div>
+<div class="visit" id="visit">
+  <div class="vbox">
+    <div class="vhead"><b id="vName"></b><span id="vWorth"></span><button id="vClose">닫기</button></div>
+    <div class="vstage" id="vStage"></div>
+    <div class="hint" id="vItems" style="margin-top:8px"></div>
+  </div>
+</div>
 <div class="auth" id="auth">
   <form id="authForm" autocomplete="on">
     <h3>플렉스시티 계정</h3>
@@ -1008,8 +1040,9 @@
   }
 
   // ---------- 3D town (town3d.js); the SVG scene stays as a fallback ----------
-  let town = null;
+  let town = null, townMod = null;
   import("./town3d.js").then(m => {
+    townMod = m;
     try {
       $("scene").classList.add("is3d");
       town = m.townViewer($("scene"), { onTap: tapTile });
@@ -1074,6 +1107,8 @@
     if (v === "wallet") renderWallet();
     if (v === "me") renderMe(); else if (avView) avView.stop();
     if (v !== "world" && town) town.stop();
+    if (v === "rank") loadRanking();
+    if (v === "world") refreshRankCard();
     window.scrollTo(0, 0);
   }
 
@@ -1252,6 +1287,52 @@
     state = fresh(); save(); renderAll(); toast("100억으로 다시 시작해요!");
   });
 
+  // ---------- Ranking & visiting (supabase/flex-ranking.sql) ----------
+  const MEDAL = ["🥇", "🥈", "🥉"];
+  function renderRankCard(r) {
+    $("rankMine").textContent = r?.me ? `내 순위 ${r.me.rank}위 / ${r.total}명 ›` : online ? "보러 가기 ›" : "가입하면 랭킹에 올라가요 ›";
+  }
+  let rankCardAt = 0;
+  function refreshRankCard() {
+    if (!online || Date.now() - rankCardAt < 30_000) return;
+    rankCardAt = Date.now();
+    sb.rpc("flex_ranking").then(({ data }) => data && renderRankCard(data));
+  }
+  async function loadRanking() {
+    if (!sb) { $("rankInfo").textContent = "서버에 연결할 수 없어요."; return; }
+    const { data: r, error } = await sb.rpc("flex_ranking");
+    if (error) { $("rankInfo").textContent = "랭킹을 불러오지 못했어요: " + error.message; return; }
+    renderRankCard(r);
+    const t = new Date(r.updated + 9 * 3600_000);
+    $("rankInfo").textContent = `참가자 ${r.total}명 · ${String(t.getUTCHours()).padStart(2, "0")}:${String(t.getUTCMinutes()).padStart(2, "0")} 기준` + (r.me ? ` · 내 순위 ${r.me.rank}위` : "");
+    const ret = w => { const x = Math.round((w / r.start - 1) * 1e4) / 1e4; return `<small class="${cls(x)}">${fmtPct(x)}</small>`; };
+    $("rankList").innerHTML = r.top.length ? r.top.map(x => `<button class="rrow${x.me ? " me" : ""}" data-visit="${esc(x.nickname)}">
+        <div class="rk">${MEDAL[x.rank - 1] || x.rank}</div>
+        <div><div class="nm">${esc(x.nickname)}${x.me ? " (나)" : ""}</div><small>${x.top_item ? "대표 소유물 · " + esc(x.top_item) : "아직 산 물건이 없어요"}</small></div>
+        <div class="wv">${wonShort(x.worth)}원${ret(x.worth)}</div></button>`).join("")
+      : `<div class="empty">아직 참가자가 없어요. 첫 번째 주인공이 되어보세요!</div>`;
+  }
+  $("rankCard").addEventListener("click", () => showView("rank"));
+  let visitView = null;
+  $("rankList").addEventListener("click", async e => {
+    const b = e.target.closest("[data-visit]");
+    if (!b) return;
+    const { data: v, error } = await sb.rpc("flex_visit", { p_nickname: b.dataset.visit });
+    if (error || !v) { toast("동네를 불러오지 못했어요"); return; }
+    $("vName").textContent = v.nickname + "님의 동네";
+    $("vWorth").textContent = v.worth != null ? "총 재산 " + wonShort(v.worth) + "원" : "";
+    const names = (v.items || []).map(id => ITEM_BY_ID[id]).filter(Boolean).sort((a, b) => b.price - a.price).map(i => i.name);
+    $("vItems").textContent = names.length ? "소유물: " + names.join(", ") : "아직 산 물건이 없어요.";
+    $("visit").classList.add("on");
+    if (!townMod) { $("vStage").textContent = "3D를 불러오지 못했어요."; return; }
+    if (!visitView) visitView = townMod.townViewer($("vStage"));
+    const [h] = nowHM();
+    visitView.setNight(h >= 19 || h < 6);
+    visitView.update({ place: v.place || {}, avatar: v.avatar || {}, showTent: !(v.items || []).some(id => ITEM_BY_ID[id]?.cat === "house") });
+    visitView.start();
+  });
+  $("vClose").addEventListener("click", () => { $("visit").classList.remove("on"); visitView?.stop(); });
+
   // ---------- Login / sign-up ----------
   let authMode = "login";
   function setAuthMode(mode) {
@@ -1306,6 +1387,8 @@
   });
 
   function renderAccount() {
+    renderRankCard(null);
+    rankCardAt = 0; refreshRankCard();
     $("acctBtn").textContent = online ? (state.nickname || "내 계정") : "로그인";
     $("guestBar").classList.toggle("on", !online);
     $("logoutBtn").hidden = !online;
