@@ -6,7 +6,8 @@
 <title>플렉스시티</title>
 <meta name="description" content="사이버머니 100억으로 코인 투자하고, 번 돈으로 차·시계·집을 사는 2D 가상 세계">
 <script type="importmap">
-{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
 </script>
 <style>
   :root {
@@ -55,7 +56,7 @@
     background: rgba(13, 18, 32, .96); backdrop-filter: blur(8px);
     border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom);
   }
-  nav.tabs .wrap { display: grid; grid-template-columns: repeat(4, 1fr); padding: 0; }
+  nav.tabs .wrap { display: grid; grid-template-columns: repeat(5, 1fr); padding: 0; }
   nav.tabs button { background: none; border: 0; padding: 10px 0 12px; font-size: 12px; color: var(--muted); display: grid; justify-items: center; gap: 3px; }
   nav.tabs button svg { width: 22px; height: 22px; }
   nav.tabs button.on { color: var(--gold); }
@@ -97,6 +98,12 @@
   @keyframes fd { from { background: rgba(76, 141, 255, .18); } }
 
   /* Shop */
+  .avstage { height: min(56vh, 460px); border-radius: var(--radius); overflow: hidden; background: #182038; border: 1px solid var(--line); display: grid; place-items: center; color: var(--muted); font-size: 14px; }
+  .avopts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+  .avopts button { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 12px; padding: 10px 6px; font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; }
+  .avopts button.on { border-color: var(--gold); color: var(--gold); font-weight: 700; }
+  .avopts button:disabled { opacity: .45; }
+  .avopts i { width: 14px; height: 14px; border-radius: 50%; flex: none; border: 1px solid rgba(255,255,255,.25); }
   .chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
   .chips button { flex: none; border: 1px solid var(--line); background: var(--panel); color: var(--muted); border-radius: 999px; padding: 7px 14px; font-size: 13.5px; }
   .chips button.on { background: var(--gold); color: var(--gold-ink); border-color: var(--gold); font-weight: 700; }
@@ -209,6 +216,13 @@
     <div class="grid" id="shopGrid"></div>
   </section>
 
+  <section class="view" id="view-me">
+    <h2>내 캐릭터 <span class="hint" style="font-weight:400">· 드래그해서 360° 돌려보세요</span></h2>
+    <div class="avstage" id="avStage">3D 캐릭터 불러오는 중…</div>
+    <div class="chips" id="avParts" style="margin-top:12px"></div>
+    <div class="avopts" id="avOpts"></div>
+  </section>
+
   <section class="view" id="view-wallet">
     <h2>보유 코인</h2>
     <div class="card" id="walletCoins"></div>
@@ -230,6 +244,7 @@
     <button data-view="world" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>내 세상</button>
     <button data-view="coin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-5 4 4 8-8"/><path d="M15 8h5v5"/></svg>코인</button>
     <button data-view="shop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8h14l-1 12H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>쇼핑</button>
+    <button data-view="me"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7" r="4"/><path d="M4 21v-1a7 7 0 0 1 14 0v1"/></svg>캐릭터</button>
     <button data-view="wallet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M16 13h2"/><path d="M3 10h18"/></svg>내 지갑</button>
   </div>
 </nav>
@@ -898,6 +913,50 @@
     }).join("") : `<div class="empty">기록이 없어요.</div>`;
   }
 
+  // ---------- 3D avatar (avatar3d.js) ----------
+  const WATCH_COLORS = { "watch-digital": "#333", "watch-classic": "#cfd5dc", "watch-diver": "#173a73", "watch-gold": "#e2be55", "watch-diamond": "#f4f6fa", "watch-grand": "#d4af37" };
+  let av3d = null, avView = null, avPart = "hair";
+  import("./avatar3d.js").then(m => { av3d = m; if ($("view-me").classList.contains("on")) renderMe(); })
+    .catch(() => { $("avStage").textContent = "3D를 불러오지 못했어요. 인터넷 연결을 확인해 주세요."; });
+  // Worn watch: the saved choice if still owned, else the best owned one.
+  function wornWatch() {
+    const w = state.avatar?.watch;
+    if (w === "none") return null;
+    return w && owns(w) ? ITEM_BY_ID[w] : bestOwned("watch");
+  }
+  function renderMe() {
+    if (!av3d) return;
+    state.avatar = { ...av3d.DEFAULT_AVATAR, ...state.avatar };
+    const parts = [...av3d.PARTS.slice(0, 6), { id: "watch", name: "시계" }, av3d.PARTS[6]];
+    $("avParts").innerHTML = parts.map(p => `<button data-part="${p.id}" class="${p.id === avPart ? "on" : ""}">${p.name}</button>`).join("");
+    let opts;
+    if (avPart === "watch") {
+      const cur = wornWatch()?.id || "none";
+      opts = [{ id: "none", name: "안 차기" }, ...ITEMS.filter(i => i.cat === "watch")].map(o => {
+        const locked = o.id !== "none" && !owns(o.id);
+        return `<button data-opt="${o.id}" class="${o.id === cur ? "on" : ""}" ${locked ? "disabled" : ""}>${o.id !== "none" ? `<i style="background:${WATCH_COLORS[o.id]}"></i>` : ""}${esc(o.name)}${locked ? " 🔒" : ""}</button>`;
+      });
+    } else {
+      const part = av3d.PARTS.find(p => p.id === avPart);
+      opts = part.opts.map(o => {
+        const sw = o.color || (o.id.startsWith("#") ? o.id : "");
+        return `<button data-opt="${o.id}" class="${state.avatar[avPart] === o.id ? "on" : ""}">${sw ? `<i style="background:${sw}"></i>` : ""}${esc(o.name)}</button>`;
+      });
+    }
+    $("avOpts").innerHTML = opts.join("");
+    if (!avView) { try { avView = av3d.avatarViewer($("avStage")); } catch (e) { $("avStage").textContent = "이 기기에서는 3D를 표시할 수 없어요."; return; } }
+    avView.set(state.avatar, WATCH_COLORS[wornWatch()?.id] || null);
+    avView.start();
+  }
+  $("avParts").addEventListener("click", e => { const b = e.target.closest("[data-part]"); if (b) { avPart = b.dataset.part; renderMe(); } });
+  $("avOpts").addEventListener("click", e => {
+    const b = e.target.closest("[data-opt]");
+    if (!b || b.disabled) return;
+    state.avatar[avPart] = b.dataset.opt;
+    save(); renderMe();
+  });
+  addEventListener("resize", () => avView && $("view-me").classList.contains("on") && avView.resize());
+
   function renderAll() { renderHeader(); renderCoins(); renderWorld(); renderShop(); renderWallet(); }
 
   // ---------- Tabs ----------
@@ -908,6 +967,7 @@
     if (v === "world") renderWorld();
     if (v === "shop") renderShop();
     if (v === "wallet") renderWallet();
+    if (v === "me") renderMe(); else if (avView) avView.stop();
     window.scrollTo(0, 0);
   }
 

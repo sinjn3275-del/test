@@ -34,15 +34,17 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { carModel } from "./models3d.js";
+import { avatarModel } from "./avatar3d.js";
 
 // ---------- Data: same save as the main game ----------
 const N = 7, ROAD_I = 3, RIVER_J = N - 1;
 const terrain = (i, j) => j === RIVER_J ? "water" : i === ROAD_I ? "road" : "land";
 // Shown when this browser has no save yet, so the preview isn't empty.
 const DEMO = { "house-apt": "1,1", "house-penthouse": "5,1", "house-mansion": "0,4", "car-super": "2,4", "car-sports": "4,3", "car-hyper": "4,5", "sp-heli": "6,4", "sp-jet": "5,0", "sp-yacht": "1,6" };
-let place = null;
+let place = null, avatarCfg = {};
 try {
   const s = JSON.parse(localStorage.getItem("flexcity.v1"));
+  if (s && s.avatar) avatarCfg = s.avatar;
   if (s && s.place && Object.keys(s.place).length) place = s.place;
 } catch (e) { /* no save */ }
 const demo = !place;
@@ -239,6 +241,13 @@ for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
   scene.add(tree(tileX(i) - 0.2, tileZ(j) - 0.15, 0.9));
   scene.add(tree(tileX(i) + 0.25, tileZ(j) + 0.2, 0.7));
 }
+
+// Me, standing by the road.
+const me = avatarModel(avatarCfg, null);
+me.scale.setScalar(0.42);
+me.position.set(tileX(ROAD_I) + 0.25, 0.1, tileZ(4));
+me.rotation.y = 0.6;
+scene.add(me);
 
 // A car driving up and down the road.
 const traffic = building("car-sedan");
