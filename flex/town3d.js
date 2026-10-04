@@ -166,12 +166,14 @@ export function townViewer(el, { onTap } = {}) {
     dyn = new THREE.Group();
     animated = []; selGroup = null; items = []; me = null;
     const taken = new Set([...Object.values(place), ...decor.map(d => d.at)]);
+    const pets = [];
     for (const d of decor) {
       const g = decorModel(d.id, { avatar });
       if (!g) continue;
       const [i, j] = d.at.split(",").map(Number);
       g.position.set(tileX(i), 0.1, tileZ(j));
-      g.rotation.y = d.id.startsWith("statue") ? Math.PI / 4 : 0;
+      g.rotation.y = d.id.startsWith("statue") ? Math.PI / 4 : g.userData.animal ? Math.random() * 6.28 : 0;
+      if (g.userData.animal) pets.push([g, i, j]);
       g.userData.base = g.position.y;
       g.traverse(o => { o.userData.key = d.at; });
       dyn.add(g); items.push(g);
@@ -217,6 +219,15 @@ export function townViewer(el, { onTap } = {}) {
     hit.position.y = 1.7;
     me.add(hit);
     me.traverse(o => { o.userData.key = AVATAR_KEY; });
+    // Animals roam their own tile and the free land tiles around it.
+    for (const [g, i, j] of pets) {
+      const area = [[i, j]];
+      for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
+        const ni = i + di, nj = j + dj, k = ni + "," + nj;
+        if ((di || dj) && ni >= 0 && ni < N && nj >= 0 && terrain(ni, nj) === "land" && !taken.has(k) && k !== pos) area.push([ni, nj]);
+      }
+      g.userData.roam = { area, target: null, wait: Math.random() * 2 };
+    }
     dyn.add(me);
     if (selected === AVATAR_KEY) { selGroup = me; dyn.add(hl(pos, 0xffd166, 0.8)); }
     if (bubble) {
@@ -271,9 +282,26 @@ export function townViewer(el, { onTap } = {}) {
 
   const clock = new THREE.Clock();
   let raf = 0;
+  let lastT = 0;
+  // Walk an animal toward a random spot in its area, rest a little, repeat.
+  function roam(g, dt) {
+    const r = g.userData.roam;
+    if (r.wait > 0) { r.wait -= dt; g.userData.walking = false; return; }
+    if (!r.target) {
+      const [i, j] = r.area[Math.floor(Math.random() * r.area.length)];
+      r.target = new THREE.Vector3(tileX(i) + (Math.random() - 0.5) * 0.6, g.position.y, tileZ(j) + (Math.random() - 0.5) * 0.6);
+    }
+    const d = r.target.clone().sub(g.position), dist = d.length(), step = 0.35 * dt;
+    g.userData.walking = true;
+    g.rotation.y = Math.atan2(-d.z, d.x);
+    if (dist <= step) { g.position.copy(r.target); r.target = null; r.wait = 1 + Math.random() * 3; }
+    else g.position.addScaledVector(d, step / dist);
+  }
   const loop = () => {
-    const t = clock.getElapsedTime();
+    const t = clock.getElapsedTime(), dt = Math.min(0.1, t - lastT);
+    lastT = t;
     for (const g of animated) {
+      if (g.userData.roam && g !== selGroup) roam(g, dt);
       if (g.userData.tick) g.userData.tick(t);
       if (g.userData.spin) g.userData.spin.rotation.y = t * 12;
       if (g.userData.bob) { g.position.y = Math.sin(t * 1.5) * 0.03; g.rotation.z = Math.sin(t * 1.1) * 0.04; }

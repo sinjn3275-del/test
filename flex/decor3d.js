@@ -1,4 +1,5 @@
-// Landscaping and statues placed on my town tiles (조경·조각상). Several of each can be bought.
+// Landscaping, statues and animals placed on my town tiles (조경·조각상·동물). Several of each
+// can be bought. Animals (cat "animal") wander around their tile in the town (town3d.js).
 // Prices must match flex_decor_item() in supabase/flex-decor.sql.
 import * as THREE from "three";
 import { avatarModel } from "./avatar3d.js";
@@ -20,6 +21,16 @@ export const DECOR = [
   { id: "statue-horse", cat: "statue", name: "청동 기마상", icon: "🐎", price: 500_000_000 },
   { id: "statue-gold", cat: "statue", name: "황금 여신상", icon: "🏆", price: 1_000_000_000 },
   { id: "statue-me", cat: "statue", name: "내 캐릭터 황금 동상", icon: "✨", price: 3_000_000_000 },
+  { id: "pet-rabbit", cat: "animal", name: "토끼", icon: "🐰", price: 5_000_000 },
+  { id: "pet-dog", cat: "animal", name: "강아지", icon: "🐶", price: 10_000_000 },
+  { id: "pet-cat", cat: "animal", name: "고양이", icon: "🐱", price: 10_000_000 },
+  { id: "pet-monkey", cat: "animal", name: "원숭이", icon: "🐵", price: 20_000_000 },
+  { id: "pet-flamingo", cat: "animal", name: "플라밍고", icon: "🦩", price: 30_000_000 },
+  { id: "pet-peacock", cat: "animal", name: "공작", icon: "🦚", price: 50_000_000 },
+  { id: "pet-alpaca", cat: "animal", name: "알파카", icon: "🦙", price: 100_000_000 },
+  { id: "pet-horse", cat: "animal", name: "말", icon: "🐴", price: 300_000_000 },
+  { id: "pet-panda", cat: "animal", name: "판다", icon: "🐼", price: 500_000_000 },
+  { id: "pet-tiger", cat: "animal", name: "아기 호랑이", icon: "🐯", price: 1_000_000_000 },
 ];
 export const DECOR_BY_ID = Object.fromEntries(DECOR.map(d => [d.id, d]));
 
@@ -115,8 +126,87 @@ function figure(c, extra, wings) {
   return g;
 }
 
+// Four-legged animal facing +x. o: body [length, height, width], legH, color, head size,
+// and optional parts. Returns the group; legs/tail are kept for the idle animation.
+function quad(o) {
+  const g = new THREE.Group(), c = o.color, [L, H, W] = o.body, y = o.legH;
+  const legs = [];
+  for (const [x, z] of [[L * 0.32, W * 0.3], [L * 0.32, -W * 0.3], [-L * 0.32, W * 0.3], [-L * 0.32, -W * 0.3]]) {
+    const leg = box(0.05, y, 0.05, o.legColor || c, 0, -y, 0);
+    const pivot = new THREE.Group(); pivot.position.set(x, y, z); pivot.add(leg); g.add(pivot); legs.push(pivot);
+  }
+  g.add(box(L, H, W, c, 0, y));
+  if (o.belly) g.add(box(L * 0.7, 0.02, W * 0.8, o.belly, 0, y - 0.005));
+  const hs = o.head, neck = o.neck || 0;
+  if (neck) g.add(box(0.07, neck, 0.07, c, L * 0.45, y + H * 0.6));
+  const head = new THREE.Group(); head.position.set(L / 2 + hs * 0.25, y + H * 0.7 + neck, 0); g.add(head);
+  head.add(box(hs, hs, hs * 0.95, o.headColor || c, 0, -hs / 2, 0));
+  head.add(box(hs * 0.4, hs * 0.4, hs * 0.5, o.snout || o.headColor || c, hs * 0.6, -hs * 0.45, 0));
+  head.add(box(0.03, 0.03, 0.03, "#111", hs * 0.5, hs * 0.08, hs * 0.25));
+  head.add(box(0.03, 0.03, 0.03, "#111", hs * 0.5, hs * 0.08, -hs * 0.25));
+  for (const z of [hs * 0.3, -hs * 0.3]) head.add(box(o.earW || 0.05, o.earH || 0.06, 0.04, o.earColor || o.headColor || c, -hs * 0.1, hs * 0.5, z));
+  let tail = null;
+  if (o.tail) { tail = new THREE.Group(); tail.position.set(-L / 2, y + H * 0.8, 0); tail.add(box(o.tail[0], o.tail[1], 0.04, o.tailColor || c, -o.tail[0] / 2, 0, 0)); tail.rotation.z = 0.5; g.add(tail); }
+  if (o.stripes) for (let k = -1; k <= 1; k++) g.add(box(0.025, H * 1.02, W * 1.02, o.stripes, k * L * 0.25, y - 0.001));
+  g.userData.parts = { legs, tail, head };
+  return g;
+}
+function bird(o) {
+  const g = new THREE.Group(), c = o.color;
+  for (const z of [0.04, -0.04]) g.add(box(0.02, o.legH, 0.02, o.legColor, 0, 0, z));
+  g.add(ball(o.size, c, 0, o.legH + o.size * 0.7, 0));
+  const neck = box(0.04, o.neck, 0.04, c, o.size * 0.6, o.legH + o.size, 0); g.add(neck);
+  const head = new THREE.Group(); head.position.set(o.size * 0.6, o.legH + o.size + o.neck, 0); g.add(head);
+  head.add(ball(0.05, o.headColor || c, 0, 0.02, 0));
+  head.add(box(0.07, 0.025, 0.025, o.beak, 0.06, 0, 0));
+  g.userData.parts = { legs: [], tail: null, head };
+  return g;
+}
+function animal(id) {
+  let g;
+  switch (id) {
+    case "pet-rabbit": g = quad({ body: [0.16, 0.12, 0.12], legH: 0.04, color: "#f1ece4", head: 0.11, earH: 0.14, earW: 0.035, earColor: "#f1ece4", snout: "#f7c6d0", tail: [0.04, 0.04], tailColor: "#ffffff" }); break;
+    case "pet-dog": g = quad({ body: [0.24, 0.12, 0.12], legH: 0.09, color: "#c68642", head: 0.12, earColor: "#8b5a2b", snout: "#e8c39e", tail: [0.1, 0.03] }); break;
+    case "pet-cat": g = quad({ body: [0.22, 0.1, 0.1], legH: 0.08, color: "#f4a259", head: 0.11, earColor: "#e07a3a", snout: "#fde2c4", tail: [0.16, 0.025], stripes: "#d2691e" }); break;
+    case "pet-monkey": g = quad({ body: [0.14, 0.18, 0.12], legH: 0.1, color: "#7b4a2a", head: 0.13, headColor: "#7b4a2a", snout: "#e9c9a1", earW: 0.06, earH: 0.05, earColor: "#e9c9a1", tail: [0.18, 0.025] }); g.rotation.z = 0.35; break;
+    case "pet-alpaca": g = quad({ body: [0.3, 0.18, 0.16], legH: 0.16, color: "#f3e9d2", head: 0.12, neck: 0.22, snout: "#e9dcc0", earH: 0.08, earW: 0.03, tail: [0.05, 0.05] }); break;
+    case "pet-horse": g = quad({ body: [0.42, 0.18, 0.16], legH: 0.26, color: "#8b5a2b", head: 0.13, neck: 0.16, legColor: "#5c3a1e", snout: "#5c3a1e", earH: 0.06, earW: 0.03, tail: [0.16, 0.05], tailColor: "#2b1a0e" }); break;
+    case "pet-panda": g = quad({ body: [0.3, 0.22, 0.24], legH: 0.1, color: "#f5f5f0", legColor: "#1d1d1d", head: 0.18, earColor: "#1d1d1d", snout: "#f5f5f0", earW: 0.07, earH: 0.06 });
+      g.add(box(0.08, 0.23, 0.25, "#1d1d1d", 0.05, 0.095));                    // black shoulder band
+      for (const z of [0.05, -0.05]) g.userData.parts.head.add(box(0.03, 0.06, 0.05, "#1d1d1d", 0.09, -0.06, z));   // eye patches
+      break;
+    case "pet-tiger": g = quad({ body: [0.32, 0.15, 0.15], legH: 0.1, color: "#f08a24", head: 0.15, belly: "#fff4e0", snout: "#fff4e0", earColor: "#f08a24", tail: [0.22, 0.035], stripes: "#2b1a0e" }); break;
+    case "pet-flamingo": g = bird({ color: "#ff8fab", legColor: "#f26a8d", legH: 0.28, size: 0.09, neck: 0.2, beak: "#2b2b2b" }); break;
+    case "pet-peacock": {
+      g = bird({ color: "#1d4ed8", headColor: "#0ea5e9", legColor: "#8d6e63", legH: 0.12, size: 0.1, neck: 0.12, beak: "#e0c080" });
+      const fan = new THREE.Group(); fan.position.set(-0.08, 0.24, 0); g.add(fan);
+      for (let k = 0; k < 9; k++) {
+        const f = box(0.02, 0.36, 0.06, k % 2 ? "#15803d" : "#0f766e", 0, 0, 0);
+        f.add(ball(0.035, "#1e3a8a", 0, 0.14, 0)); f.add(ball(0.02, "#facc15", 0.012, 0.14, 0));   // eye spot near the feather tip
+        const piv = new THREE.Group(); piv.rotation.x = (k - 4) * 0.28; piv.add(f); fan.add(piv);
+      }
+      g.userData.parts.fan = fan;
+      break;
+    }
+    default: return null;
+  }
+  g.scale.setScalar(id === "pet-horse" ? 1.15 : 1.35);
+  g.userData.animal = true;
+  const { legs, tail, head, fan } = g.userData.parts;
+  // Idle animation; walking is driven by the town (userData.walking).
+  g.userData.tick = t => {
+    const w = g.userData.walking ? Math.sin(t * 14) * 0.5 : 0;
+    legs.forEach((l, k) => { l.rotation.z = (k % 2 ? w : -w); });
+    if (tail) tail.rotation.y = Math.sin(t * (id === "pet-dog" ? 12 : 3)) * 0.5;
+    if (head) head.rotation.z = Math.sin(t * 1.3 + id.length) * 0.12;
+    if (fan) { const open = Math.max(0, Math.sin(t * 0.4)); fan.scale.set(1, 0.3 + open * 0.7, 0.3 + open * 0.7); }
+  };
+  return g;
+}
+
 // avatar: dress-up config, used by the golden statue of my own character.
 export function decorModel(id, { avatar = {} } = {}) {
+  if (id.startsWith("pet-")) return animal(id);
   const g = new THREE.Group();
   switch (id) {
     case "flowerbed": {

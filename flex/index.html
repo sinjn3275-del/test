@@ -96,7 +96,7 @@
   .paintbar .mats { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 7px; }
   .paintbar .mats button { border: 2px solid transparent; background: var(--panel-2); border-radius: 12px; padding: 6px 4px; color: var(--text); font-size: 11.5px; font-weight: 700; display: grid; justify-items: center; gap: 3px; }
   .paintbar .etabs { display: flex; gap: 6px; margin-bottom: 9px; }
-  .paintbar .etabs button { flex: 1; border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); border-radius: 10px; padding: 7px 4px; font-size: 13px; font-weight: 700; }
+  .paintbar .etabs button { flex: 1; min-width: 0; border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); border-radius: 10px; padding: 7px 2px; font-size: 12.5px; font-weight: 700; white-space: nowrap; }
   .paintbar .etabs button.on { color: var(--text); border-color: var(--text); }
   .paintbar .mats button em { font-style: normal; font-size: 22px; line-height: 22px; }
   .paintbar .mats button i { width: 34px; height: 22px; border-radius: 6px; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .18); }
@@ -484,6 +484,7 @@
     { id: "special", name: "요트·전용기" },
     { id: "garden", name: "조경" },
     { id: "statue", name: "조각상" },
+    { id: "animal", name: "동물" },
   ];
   const ITEMS = [
     { id: "car-mini", cat: "car", name: "귀요미 경차", price: 15_000_000, art: ["car", "mini", "#7fd1ae"] },
@@ -1131,11 +1132,11 @@
     state.floor = !error && data?.floor && typeof data.floor === "object" ? data.floor : {};
     state.decor = !error && Array.isArray(data?.decor) ? data.decor : [];
   }
-  const EDIT_TABS = [["floor", "🧱 바닥"], ["garden", "🌳 조경"], ["statue", "🗿 조각상"]];
+  const EDIT_TABS = [["floor", "🧱 바닥"], ["garden", "🌳 조경"], ["statue", "🗿 조각상"], ["animal", "🐾 동물"]];
   function renderPaintBar() {
     const bar = $("paintBar");
     if (!town || !FLOORS.length) { bar.innerHTML = ""; return; }
-    if (!edit) { bar.innerHTML = `<button class="open" id="editOpen">🛠️ 꾸미기 · 바닥·나무·분수·조각상</button>`; return; }
+    if (!edit) { bar.innerHTML = `<button class="open" id="editOpen">🛠️ 꾸미기 · 바닥·나무·분수·조각상·동물</button>`; return; }
     const d = editDiff(), changed = Object.keys(d.floor).length + d.add.length + d.remove.length;
     const chips = edit.tab === "floor"
       ? FLOORS.map(f => `<button data-mat="${f.id}" class="${f.id === edit.mat ? "on" : ""}"><i style="background:${f.color}"></i>${esc(f.name)}<small>${f.price ? wonShort(f.price) + "원" : "되돌리기"}</small></button>`)
@@ -1288,15 +1289,15 @@
     $("cats").innerHTML = CATS.map(c => `<button data-cat="${c.id}" class="${c.id === shopCat ? "on" : ""}">${c.name}</button>`).join("");
     const [h] = nowHM();
     const night = h >= 19 || h < 6;
-    if (shopCat === "garden" || shopCat === "statue") {
+    if (shopCat === "garden" || shopCat === "statue" || shopCat === "animal") {
       $("shopGrid").innerHTML = DECOR.filter(d => d.cat === shopCat).map(d => {
         const n = state.decor.filter(x => x.id === d.id).length, short = d.price - state.cash;
         return `<div class="item">
           <div class="art">${decorArt(d)}</div>
           <div class="nm">${esc(d.name)}${n ? `<span class="owned-tag">${n}개</span>` : ""}</div>
           <div class="pr">${won(d.price)}</div>
-          <div class="need">${short > 0 ? `${wonShort(short)}원 부족` : "여러 개 놓을 수 있어요"}</div>
-          <div class="act"><button class="btn" data-place-decor="${d.id}" ${short > 0 ? "disabled" : ""}>${short > 0 ? "돈이 부족해요" : "내 땅에 놓기"}</button></div>
+          <div class="need">${short > 0 ? `${wonShort(short)}원 부족` : d.cat === "animal" ? "내 땅을 돌아다녀요" : "여러 개 놓을 수 있어요"}</div>
+          <div class="act"><button class="btn" data-place-decor="${d.id}" ${short > 0 ? "disabled" : ""}>${short > 0 ? "돈이 부족해요" : d.cat === "animal" ? "데려오기" : "내 땅에 놓기"}</button></div>
         </div>`;
       }).join("") || `<div class="empty">불러오는 중이에요</div>`;
       return;
@@ -1771,7 +1772,7 @@
 
   // ---------- 청담 플렉스 거리 (street3d.js, supabase/flex-street.sql) ----------
   let street = null, streetMod = null, streetAt = 0;
-  const SHOP_NAMES = { car: "자동차 매장", watch: "시계 부티크", house: "플렉스 부동산", special: "요트·전용기 라운지", garden: "가든 센터", statue: "조각 갤러리" };
+  const SHOP_NAMES = { car: "자동차 매장", watch: "시계 부티크", house: "플렉스 부동산", special: "요트·전용기 라운지", garden: "가든 센터", statue: "조각 갤러리", animal: "동물 농장" };
   function goShop(cat) { shopCat = cat; showView("shop"); }
   async function openStreet() {
     if (!streetMod) {

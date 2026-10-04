@@ -1,5 +1,6 @@
--- 플렉스시티: 조경·조각상 (내 동네에 나무·분수·우물·동상 등을 여러 개 사서 놓기).
--- Run after flex-floor.sql in Supabase Dashboard → SQL Editor. Safe to re-run.
+-- 플렉스시티: 조경·조각상·동물 (내 동네에 나무·분수·우물·동상·동물 등을 여러 개 사서 놓기).
+-- Run after flex-floor.sql in Supabase Dashboard → SQL Editor. Safe to re-run
+-- (re-run it whenever the catalog below grows).
 --
 -- Each placed piece is one row in flex_decor. Pieces are bought, removed (90% back) and
 -- the floor is paved together in one 완료 (flex_edit_town); moving a piece is free.
@@ -37,7 +38,17 @@ as $$
     ('statue-angel', '천사상', 300000000),
     ('statue-horse', '청동 기마상', 500000000),
     ('statue-gold', '황금 여신상', 1000000000),
-    ('statue-me', '내 캐릭터 황금 동상', 3000000000)
+    ('statue-me', '내 캐릭터 황금 동상', 3000000000),
+    ('pet-rabbit', '토끼', 5000000),
+    ('pet-dog', '강아지', 10000000),
+    ('pet-cat', '고양이', 10000000),
+    ('pet-monkey', '원숭이', 20000000),
+    ('pet-flamingo', '플라밍고', 30000000),
+    ('pet-peacock', '공작', 50000000),
+    ('pet-alpaca', '알파카', 100000000),
+    ('pet-horse', '말', 300000000),
+    ('pet-panda', '판다', 500000000),
+    ('pet-tiger', '아기 호랑이', 1000000000)
   ) v(id, name, price) where v.id = p_id
 $$;
 
@@ -133,7 +144,7 @@ begin
   update flex_accounts set cash = cash - net, floor = fl where user_id = a.user_id;
 
   if n_floor > 0 then parts := parts || ('바닥 ' || n_floor || '칸'); end if;
-  if n_add > 0 then parts := parts || ('조경·조각상 ' || n_add || '개'); end if;
+  if n_add > 0 then parts := parts || ('새로 놓기 ' || n_add || '개'); end if;
   if n_remove > 0 then parts := parts || ('철거 ' || n_remove || '개'); end if;
   if cardinality(parts) > 0 then
     insert into flex_log (user_id, text) values (a.user_id, '꾸미기(' || array_to_string(parts, ', ') || ') '
