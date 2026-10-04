@@ -1,13 +1,12 @@
-// 3D low-poly town for the "내 세상" tab (and lowpoly.html): my own 7x7 plot of dirt that
-// can be paved tile by tile, bought items, avatar, tap-to-select/move via raycasting, day/night.
+// 3D low-poly town for the "내 세상" tab (and lowpoly.html): my own plot of dirt (7x7 up to
+// 13x13, river on the last row) that can be paved tile by tile, bought items (big ones cover
+// several tiles), decor and roaming animals, avatar, tap-to-select/move, hover preview, day/night.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { itemModel, windowMat, textTexture } from "./models3d.js";
 import { avatarModel } from "./avatar3d.js";
 import { decorModel } from "./decor3d.js";
 
-export const N = 7, RIVER_J = N - 1;
-export const terrain = (i, j) => j === RIVER_J ? "water" : "land";
 export const AVATAR_TILE = [3, 4];
 
 // Floor materials bought per tile. Prices must match flex_floor_price() in supabase/flex-floor.sql.
@@ -36,7 +35,6 @@ function mesh(geo, color, x = 0, y = 0, z = 0, extra) {
   return m;
 }
 const box = (w, h, d, c, x, y, z, extra) => mesh(new THREE.BoxGeometry(w, h, d), c, x, y + h / 2, z, extra);
-const tileX = i => i - (N - 1) / 2, tileZ = j => j - (N - 1) / 2;
 
 // Small seamless canvas texture per floor material so tiles read as grass/brick/wood, not flat color.
 const floorMats = {};
@@ -117,19 +115,29 @@ export function townViewer(el, { onTap } = {}) {
   Object.assign(sun.shadow.camera, { left: -8, right: 8, top: 8, bottom: -8 });
   scene.add(sun);
 
-  // Ground tiles (each tagged with its key for tapping).
-  const tiles = [];
-  const ground = new THREE.Group();
-  scene.add(ground);
-  ground.add(box(N + 0.6, 0.6, N + 0.6, "#7f5539", 0, -0.6, 0));
-  const waters = [];
-  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
-    const x = tileX(i), z = tileZ(j);
-    let m;
-    if (terrain(i, j) === "water") { m = box(1, 0.06, 1, "#48cae4", x, -0.02, z, { transparent: true, opacity: 0.9, roughness: 0.2, metalness: 0.1 }); waters.push(m); }
-    else m = box(0.98, 0.1, 0.98, floorMat("dirt"), x, 0, z);
-    m.userData.key = i + "," + j;
-    tiles.push(m); ground.add(m);
+  // Ground tiles (each tagged with its key for tapping); rebuilt when the land grows.
+  let size = 0;
+  const terrain = (i, j) => j === size - 1 ? "water" : "land";
+  const tileX = i => i - (size - 1) / 2, tileZ = j => j - (size - 1) / 2;
+  let tiles = [], waters = [], ground = null;
+  function buildGround(n) {
+    if (ground) scene.remove(ground);
+    size = n; tiles = []; waters = [];
+    ground = new THREE.Group();
+    scene.add(ground);
+    ground.add(box(n + 0.6, 0.6, n + 0.6, "#7f5539", 0, -0.6, 0));
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+      const x = tileX(i), z = tileZ(j);
+      let m;
+      if (terrain(i, j) === "water") { m = box(1, 0.06, 1, "#48cae4", x, -0.02, z, { transparent: true, opacity: 0.9, roughness: 0.2, metalness: 0.1 }); waters.push(m); }
+      else m = box(0.98, 0.1, 0.98, floorMat("dirt"), x, 0, z);
+      m.userData.key = i + "," + j;
+      tiles.push(m); ground.add(m);
+    }
+    Object.assign(sun.shadow.camera, { left: -n, right: n, top: n, bottom: -n });
+    sun.shadow.camera.updateProjectionMatrix();
+    controls.maxDistance = 40 * n / 7;
+    resize();
   }
 
   const clouds = [];
@@ -152,20 +160,24 @@ export function townViewer(el, { onTap } = {}) {
     return m;
   };
 
-  // place: { itemId: "i,j" }, selected: itemId | "@me" | null, targets: ["i,j"], avatar: cfg (avatar.pos = "i,j"), watch: color | null,
-  // floor: { "i,j": material } (missing = dirt), decor: [{ rid, id, at: "i,j" }] (selected "d:<rid>" lifts one)
+  // land: tiles per side, place: { itemId: "i,j" (top-left tile) }, sizes: { itemId: [w, d] } tiles it covers,
+  // selected: itemId | "@me" | "d:<rid>" | null, targets: ["i,j"], avatar: cfg (avatar.pos = "i,j"),
+  // watch: color | null, floor: { "i,j": material } (missing = dirt), decor: [{ rid, id, at: "i,j" }]
   const sprite = (lines, opts, sx, sy) => {
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: textTexture(lines, opts), depthTest: false }));
     s.scale.set(sx, sy, 1); s.renderOrder = 10;
     return s;
   };
   // banner: 현수막 text over the back of the island; bubble: 말풍선 over the avatar.
-  function update({ place = {}, selected = null, targets = [], avatar = {}, watch = null, showTent = false, banner = null, bubble = null, floor = {}, decor = [] } = {}) {
+  function update({ place = {}, selected = null, targets = [], avatar = {}, watch = null, showTent = false, banner = null, bubble = null, floor = {}, decor = [], land = 7, sizes = {} } = {}) {
+    if (land !== size) buildGround(land);
     for (const m of tiles) if (terrain(...m.userData.key.split(",").map(Number)) === "land") m.material = floorMat(floor[m.userData.key] || "dirt");
     scene.remove(dyn);
     dyn = new THREE.Group();
     animated = []; selGroup = null; items = []; me = null;
-    const taken = new Set([...Object.values(place), ...decor.map(d => d.at)]);
+    const foot = id => sizes[id] || [1, 1];
+    const cells = (key, [w, d]) => { const [i, j] = key.split(",").map(Number), out = []; for (let a = 0; a < w; a++) for (let b = 0; b < d; b++) out.push((i + a) + "," + (j + b)); return out; };
+    const taken = new Set([...Object.entries(place).flatMap(([id, k]) => cells(k, foot(id))), ...decor.map(d => d.at)]);
     const pets = [];
     for (const d of decor) {
       const g = decorModel(d.id, { avatar });
@@ -184,7 +196,10 @@ export function townViewer(el, { onTap } = {}) {
       const [i, j] = key.split(",").map(Number);
       const g = townModel(id);
       if (!g) continue;
-      g.position.set(tileX(i), terrain(i, j) === "water" ? 0 : 0.1, tileZ(j));
+      // Big items sit centred on their w x d tiles and grow with them.
+      const [w, d] = foot(id);
+      g.position.set(tileX(i + (w - 1) / 2), terrain(i, j) === "water" ? 0 : 0.1, tileZ(j + (d - 1) / 2));
+      if (w * d > 1) g.scale.multiplyScalar(Math.sqrt(w * d) * 0.85);
       g.userData.base = g.position.y;
       g.traverse(o => { o.userData.key = key; });
       dyn.add(g); items.push(g);
@@ -193,11 +208,12 @@ export function townViewer(el, { onTap } = {}) {
     }
     if (showTent && !taken.has("1,4")) { const t = tent(); t.position.set(tileX(1), 0.1, tileZ(4)); t.traverse(o => { o.userData.key = "1,4"; }); dyn.add(t); }
     for (const key of targets) dyn.add(hl(key, 0xe7c26a, 0.45));
-    if (selected && place[selected]) dyn.add(hl(place[selected], 0xffd166, 0.8));
+    if (selected && place[selected]) for (const k of cells(place[selected], foot(selected))) dyn.add(hl(k, 0xffd166, 0.8));
     const selDecor = decor.find(d => selected === "d:" + d.rid);
     if (selDecor) dyn.add(hl(selDecor.at, 0xffd166, 0.8));
     // The avatar stands on its own tile (avatar.pos) and walks there when it changes.
-    const pos = /^[0-6],[0-6]$/.test(avatar.pos || "") ? avatar.pos : AVATAR_TILE.join(",");
+    const ok = /^\d+,\d+$/.test(avatar.pos || "") && avatar.pos.split(",").every(n => +n < size);
+    const pos = ok ? avatar.pos : AVATAR_TILE.join(",");
     const [ai, aj] = pos.split(",").map(Number);
     me = avatarModel(avatar, watch);
     me.scale.setScalar(0.42);
@@ -224,7 +240,7 @@ export function townViewer(el, { onTap } = {}) {
       const area = [[i, j]];
       for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
         const ni = i + di, nj = j + dj, k = ni + "," + nj;
-        if ((di || dj) && ni >= 0 && ni < N && nj >= 0 && terrain(ni, nj) === "land" && !taken.has(k) && k !== pos) area.push([ni, nj]);
+        if ((di || dj) && ni >= 0 && ni < size && nj >= 0 && terrain(ni, nj) === "land" && !taken.has(k) && k !== pos) area.push([ni, nj]);
       }
       g.userData.roam = { area, target: null, wait: Math.random() * 2 };
     }
@@ -237,7 +253,7 @@ export function townViewer(el, { onTap } = {}) {
     }
     if (banner) {
       const b = sprite([banner, "현수막"], { w: 768, h: 170, bg: "#b8860b", fg: "#1b1b1f", accent: "#fff3b0", size: 66 }, 5.4, 1.2);
-      b.position.set(-0.5, 2.6, -3.2);
+      b.position.set(-0.5, 2.6, tileZ(0) - 0.2);
       dyn.add(b);
     }
     scene.add(dyn);
@@ -271,13 +287,45 @@ export function townViewer(el, { onTap } = {}) {
     if (hit && onTap) onTap(hit.object.userData.key);
   });
 
+  // Hover preview (PC): a see-through copy of what's about to be placed follows the mouse,
+  // with a green/red square for whether that tile can take it. check(key) → boolean.
+  let ghost = null, ghostCheck = null, ghostMark = null;
+  function setGhost(model, check) {
+    if (ghost) scene.remove(ghost);
+    if (ghostMark) scene.remove(ghostMark);
+    ghost = ghostMark = null; ghostCheck = check;
+    if (!model) return;
+    model.traverse(o => {
+      if (o.isMesh) { o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.5; o.material.depthWrite = false; o.castShadow = false; }
+      o.raycast = () => {};
+    });
+    ghost = model; ghost.visible = false;
+    ghostMark = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.02, 0.96), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.5, depthWrite: false }));
+    ghostMark.visible = false;
+    scene.add(ghost, ghostMark);
+  }
+  renderer.domElement.addEventListener("pointermove", e => {
+    if (!ghost || e.pointerType !== "mouse") return;
+    const r = renderer.domElement.getBoundingClientRect();
+    ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, camera);
+    const hit = ray.intersectObjects(tiles, false)[0];
+    ghost.visible = ghostMark.visible = !!hit;
+    if (!hit) return;
+    const key = hit.object.userData.key, [i, j] = key.split(",").map(Number);
+    ghost.position.set(tileX(i), 0.1, tileZ(j));
+    ghostMark.position.set(tileX(i), 0.12, tileZ(j));
+    ghostMark.material.color.set(ghostCheck && !ghostCheck(key) ? 0xff4d4f : 0x52c41a);
+  });
+  renderer.domElement.addEventListener("pointerleave", () => { if (ghost) ghost.visible = ghostMark.visible = false; });
+
   function resize() {
     const w = el.clientWidth || 300, h = el.clientHeight || 300;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     // Back off on narrow screens so the whole island fits.
-    camera.position.setLength(12.2 * Math.max(1, 1.15 / camera.aspect));
+    camera.position.setLength(12.2 * (size || 7) / 7 * Math.max(1, 1.15 / camera.aspect));
   }
 
   const clock = new THREE.Clock();
@@ -321,7 +369,7 @@ export function townViewer(el, { onTap } = {}) {
     raf = requestAnimationFrame(loop);
   };
   return {
-    update, setNight, resize,
+    update, setNight, resize, setGhost,
     get night() { return night; },
     start() { if (!raf) { resize(); raf = requestAnimationFrame(loop); } },
     stop() { cancelAnimationFrame(raf); raf = 0; },

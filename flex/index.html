@@ -91,6 +91,10 @@
   .movebar { margin-top: 8px; font-size: 12.5px; color: var(--muted); text-align: center; min-height: 30px; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 10px; padding: 4px 8px; }
   .movebar.on { background: rgba(231, 194, 106, .14); color: var(--text); }
   .paintbar { margin-top: 8px; }
+  .paintbar .row { display: flex; gap: 8px; }
+  .paintbar .row .open { flex: 1; display: grid; gap: 2px; }
+  .paintbar .row .open small { color: var(--muted); font-weight: 600; font-size: 11.5px; }
+  .paintbar .row .open:disabled { opacity: .5; }
   .paintbar .open { width: 100%; border: 1px dashed var(--line); background: var(--panel); color: var(--text); border-radius: 12px; padding: 10px; font-size: 13.5px; font-weight: 700; }
   .paintbar .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px; }
   .paintbar .mats { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 7px; }
@@ -550,7 +554,7 @@
   const cls = r => r > 0 ? "up" : r < 0 ? "down" : "flat";
 
   // ---------- State (saved in this browser) ----------
-  const fresh = () => ({ cash: START_CASH, coins: {}, items: [], place: {}, floor: {}, decor: [], log: [], orders: [], created: Date.now() });
+  const fresh = () => ({ cash: START_CASH, coins: {}, items: [], place: {}, land: 7, floor: {}, decor: [], log: [], orders: [], created: Date.now() });
   function load() {
     try {
       const s = JSON.parse(localStorage.getItem(STORE_KEY));
@@ -587,7 +591,7 @@
     try {
       const { data, error } = await sb.rpc(fn, args);
       if (error) { toast(error.message); return false; }
-      state = fromServer({ floor: state.floor, decor: state.decor, ...data });   // the town comes separately (flex_town)
+      state = fromServer({ floor: state.floor, decor: state.decor, land: state.land, ...data });   // the town comes separately (flex_town)
       setTimeout(() => loadDaily(true), 0);   // mission progress may have changed
       return true;
     } catch (e) {
@@ -831,15 +835,27 @@
   }
 
   // ---------- Isometric town ----------
-  // 7x7 tiles: row j=6 is the river, everything else is my land (bare dirt until paved).
-  const N = 7, TW = 96, TH = 48, RIVER_J = N - 1;
-  const terrain = (i, j) => j === RIVER_J ? "water" : "land";
+  // N x N tiles (7 → 9 → 11 → 13 with 땅 넓히기): the last row is the river, everything else
+  // is my land (bare dirt until paved). Growing adds columns on the right and land rows above the river.
+  let N = 7;
+  const TW = 96, TH = 48;
+  const LAND_STEPS = { 7: 100_000_000, 9: 500_000_000, 11: 2_000_000_000 };   // price to grow from this size (= flex_land_price)
+  const syncLand = () => { N = state.land || 7; };
+  const terrain = (i, j) => j === N - 1 ? "water" : "land";
   const tileKey = (i, j) => i + "," + j;
   const parseKey = k => k.split(",").map(Number);
   const placeable = item => item && item.cat !== "watch";
   const WATER_ITEMS = ["sp-yacht", "sp-superyacht", "sp-sub"];
   const needs = item => WATER_ITEMS.includes(item.id) ? "water" : "land";
   const AVATAR_TILE = [3, 4];
+  // Tiles an item covers ([w along i, d along j]); pricier homes and vehicles take more room.
+  const FOOT = {
+    "house-apt": [2, 1], "house-hanok": [2, 1], "house-poolvilla": [2, 2], "house-penthouse": [2, 2],
+    "house-mansion": [3, 2], "house-castle": [3, 3], "house-tower": [3, 3],
+    "sp-yacht": [2, 1], "sp-sub": [2, 1], "sp-superyacht": [3, 1], "sp-heli": [2, 1], "sp-jet": [3, 2], "sp-rocket": [2, 2],
+  };
+  const footOf = id => FOOT[id] || [1, 1];
+  const cellsOf = (key, id) => { const [i, j] = parseKey(key), [w, d] = footOf(id), out = []; for (let a = 0; a < w; a++) for (let b = 0; b < d; b++) out.push(tileKey(i + a, j + b)); return out; };
 
   // Ground point for tile-local coords (a along i, b along j, both in tile units) at height z.
   const pt = (cx, cy, a, b, z = 0) => [cx + (a - b) * TW / 2, cy + (a + b) * TH / 2 - z];
@@ -933,33 +949,43 @@
 
   function tent(cx, cy) { return pyramid(cx, cy, .5, 34, "#e07a4a"); }
 
-  // Keep every placeable owned item on a valid, unique tile.
+  // Can item `id` sit with its top-left tile at `key`? Its whole footprint must be inside the
+  // town, on the right terrain, and clear of other items (except `id` itself) and decor.
+  function fits(id, key, place = state.place, decor = state.decor) {
+    const item = ITEM_BY_ID[id], kind = needs(item);
+    const busy = new Set([...Object.entries(place).filter(([o]) => o !== id).flatMap(([o, k]) => cellsOf(k, o)), ...decor.map(d => d.at)]);
+    return cellsOf(key, id).every(c => { const [i, j] = parseKey(c); return i < N && j < N && terrain(i, j) === kind && !busy.has(c); });
+  }
+  // Keep every placeable owned item on a valid spot; place new ones where they fit.
+  // Items that don't fit anywhere stay unplaced (see unplaced()).
   function ensurePlacement() {
+    syncLand();
     state.place = state.place || {};
-    const placed = new Set((state.decor || []).map(d => d.at));
+    state.decor = state.decor || [];
+    const kept = {};
     for (const [id, k] of Object.entries(state.place)) {
-      const item = ITEM_BY_ID[id], [i, j] = parseKey(k);
-      if (!owns(id) || !placeable(item) || terrain(i, j) !== needs(item) || placed.has(k)) delete state.place[id];
-      else placed.add(k);
+      if (owns(id) && placeable(ITEM_BY_ID[id]) && /^\d+,\d+$/.test(k) && fits(id, k, kept)) kept[id] = k;
     }
-    const free = (kind, back) => {
-      // Tall houses go to the back so they don't hide cars; everything else goes to the front.
-      const tiles = [];
-      for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) if (terrain(i, j) === kind && !placed.has(tileKey(i, j))) tiles.push([i, j]);
-      tiles.sort((p, q) => (back ? 1 : -1) * ((p[0] + p[1]) - (q[0] + q[1])) || p[0] - q[0]);
-      return tiles[0];
-    };
-    for (const id of state.items) {
-      const item = ITEM_BY_ID[id];
-      if (!placeable(item) || state.place[id]) continue;
-      const t = free(needs(item), item.cat === "house");
-      if (t) { state.place[id] = tileKey(...t); placed.add(tileKey(...t)); }
+    state.place = kept;
+    // Big things first so they get room; tall houses go to the back so they don't hide cars.
+    const todo = state.items.filter(id => placeable(ITEM_BY_ID[id]) && !state.place[id])
+      .sort((a, b) => footOf(b)[0] * footOf(b)[1] - footOf(a)[0] * footOf(a)[1]);
+    for (const id of todo) {
+      const back = ITEM_BY_ID[id].cat === "house", spots = [];
+      for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) spots.push([i, j]);
+      spots.sort((p, q) => (back ? 1 : -1) * ((p[0] + p[1]) - (q[0] + q[1])) || p[0] - q[0]);
+      const spot = spots.find(([i, j]) => fits(id, tileKey(i, j)));
+      if (spot) state.place[id] = tileKey(...spot);
     }
   }
+  const unplaced = () => state.items.filter(id => placeable(ITEM_BY_ID[id]) && !state.place[id]);
 
   let selectedItem = null;   // an item id, or ME while moving the avatar
   const ME = "@me";
-  const avatarPos = () => /^[0-6],[0-6]$/.test(state.avatar?.pos || "") ? state.avatar.pos : tileKey(...AVATAR_TILE);
+  const avatarPos = () => {
+    const p = state.avatar?.pos;
+    return /^\d+,\d+$/.test(p || "") && parseKey(p).every(n => n < N) && terrain(...parseKey(p)) === "land" ? p : tileKey(...AVATAR_TILE);
+  };
   function isoSceneSVG() {
     const [h] = nowHM();
     const night = h >= 19 || h < 6, dusk = h >= 17 && h < 19;
@@ -995,7 +1021,8 @@
 
     let stars = "";
     if (night) for (let s = 0; s < 30; s++) stars += `<circle cx="${-340 + (s * 53) % 680}" cy="${-230 + (s * 37) % 200}" r="${s % 4 ? .9 : 1.5}" fill="#fff" opacity=".8"/>`;
-    return `<svg viewBox="-345 -235 690 570" role="img" aria-label="내 동네">
+    const zf = N / 7;
+    return `<svg viewBox="${-345 * zf} ${-235 * zf} ${690 * zf} ${570 * zf}" role="img" aria-label="내 동네">
       <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${sky[0]}"/><stop offset="1" stop-color="${sky[1]}"/></linearGradient></defs>
       <rect x="-345" y="-235" width="690" height="570" fill="url(#sky)"/>${stars}
       <circle cx="270" cy="-180" r="${night ? 16 : 22}" fill="${night ? "#f4f1de" : dusk ? "#ff7b54" : "#ffe066"}"/>
@@ -1009,7 +1036,7 @@
     if (g) tapTile(g.dataset.t);
   }
   const decorAt = (k, list = state.decor) => list.find(d => d.at === k);
-  const itemAt = k => Object.keys(state.place).find(id => state.place[id] === k);
+  const itemAt = k => Object.keys(state.place).find(id => cellsOf(state.place[id], id).includes(k));
   function tapTile(k) {
     if (edit) { editTile(k === ME ? avatarPos() : k); return; }
     if (k === ME) { selectedItem = selectedItem === ME ? null : ME; renderWorld(); return; }
@@ -1040,8 +1067,11 @@
     const item = ITEM_BY_ID[selectedItem];
     if (here === selectedItem) { selectedItem = null; renderWorld(); return; }
     if (terrain(i, j) !== needs(item)) { toast(needs(item) === "water" ? "배는 강 위에만 둘 수 있어요" : "땅 위에만 둘 수 있어요"); return; }
-    if (dHere) { toast("조경·조각상이 있는 칸이에요"); return; }
-    if (here) state.place[here] = state.place[selectedItem]; // swap
+    if (!fits(selectedItem, k)) {
+      const [w, d] = footOf(selectedItem);
+      toast(w * d > 1 ? `${w}×${d}칸이 비어 있어야 해요 (누른 칸이 왼쪽 위)` : "다른 게 있는 칸이에요");
+      return;
+    }
     state.place[selectedItem] = k;
     selectedItem = null; save(); renderWorld();
   }
@@ -1058,7 +1088,7 @@
   const decorValue = () => (state.decor || []).reduce((s, d) => s + Math.floor((decorItem(d.id)?.price || 0) * RESALE), 0);
   function editDiff() {
     const floor = {};
-    for (let i = 0; i < N; i++) for (let j = 0; j < RIVER_J; j++) {
+    for (let i = 0; i < N; i++) for (let j = 0; j < N - 1; j++) {
       const k = tileKey(i, j), was = state.floor[k] || "dirt", now = edit.floor[k] || "dirt";
       if (was !== now) floor[k] = now;
     }
@@ -1120,6 +1150,30 @@
     closeEdit(); renderHeader();
     toast(d.net > 0 ? `완성! ${won(d.net)}을 썼어요` : "완성!");
   }
+  async function expandLand() {
+    const price = LAND_STEPS[N];
+    if (!price) return;
+    if (state.cash < price) { toast(`현금이 부족해요 (${wonShort(price)}원 필요)`); return; }
+    if (!confirm(`땅을 ${N}×${N}에서 ${N + 2}×${N + 2}로 넓힐까요?\n${won(price)}이 빠져나가요. 완료 후에는 취소할 수 없어요.`)) return;
+    if (online) {
+      if (!await server("flex_expand_land", {})) return;
+    } else {
+      state.cash -= price; state.land = N + 2;
+      log(`땅 넓히기 ${state.land}×${state.land} -${wonShort(price)}원`);
+      save();
+    }
+    selectedItem = null; renderHeader(); renderWorld();
+    toast(`땅이 ${state.land}×${state.land}로 넓어졌어요! 🎉`);
+  }
+  // Hover preview of the piece picked in the editor (PC only; see town.setGhost).
+  let ghostFor = null;
+  function syncGhost() {
+    const want = edit && edit.tab !== "floor" && edit.pick && decor3d ? edit.pick : null;
+    if (want === ghostFor) return;
+    ghostFor = want;
+    town.setGhost(want ? decor3d.decorModel(want, { avatar: state.avatar || {} }) : null,
+      k => { const [i, j] = parseKey(k); return terrain(i, j) === "land" && !itemAt(k) && k !== avatarPos() && !decorAt(k, edit.decor); });
+  }
   function openEdit(tab = "floor", pick = null) {
     selectedItem = null; newRid = 0;
     edit = { tab, mat: "grass", pick, floor: { ...state.floor }, decor: [...state.decor] };
@@ -1129,6 +1183,7 @@
   async function loadTown() {
     let { data, error } = await sb.rpc("flex_town");
     if (error) ({ data, error } = await sb.rpc("flex_floor").then(r => ({ ...r, data: r.data && { floor: r.data } })));   // flex-decor.sql not run yet
+    state.land = !error && [7, 9, 11, 13].includes(data?.land) ? data.land : 7;
     state.floor = !error && data?.floor && typeof data.floor === "object" ? data.floor : {};
     state.decor = !error && Array.isArray(data?.decor) ? data.decor : [];
   }
@@ -1136,7 +1191,12 @@
   function renderPaintBar() {
     const bar = $("paintBar");
     if (!town || !FLOORS.length) { bar.innerHTML = ""; return; }
-    if (!edit) { bar.innerHTML = `<button class="open" id="editOpen">🛠️ 꾸미기 · 바닥·나무·분수·조각상·동물</button>`; return; }
+    if (!edit) {
+      const price = LAND_STEPS[N];
+      bar.innerHTML = `<div class="row"><button class="open" id="editOpen">🛠️ 꾸미기<small>바닥·나무·조각상·동물</small></button>
+        <button class="open" id="landOpen" ${price ? "" : "disabled"}>🗺️ 땅 넓히기<small>${price ? `${N + 2}×${N + 2} · ${wonShort(price)}원` : `최대 ${N}×${N}`}</small></button></div>`;
+      return;
+    }
     const d = editDiff(), changed = Object.keys(d.floor).length + d.add.length + d.remove.length;
     const chips = edit.tab === "floor"
       ? FLOORS.map(f => `<button data-mat="${f.id}" class="${f.id === edit.mat ? "on" : ""}"><i style="background:${f.color}"></i>${esc(f.name)}<small>${f.price ? wonShort(f.price) + "원" : "되돌리기"}</small></button>`)
@@ -1151,6 +1211,7 @@
   }
   $("paintBar").addEventListener("click", e => {
     if (e.target.closest("#editOpen")) { openEdit(); return; }
+    if (e.target.closest("#landOpen")) { expandLand(); return; }
     if (e.target.closest("#editCancel")) { closeEdit(); return; }
     if (e.target.closest("#editDone")) { finishEdit(); return; }
     const t = e.target.closest("[data-etab]"), m = e.target.closest("[data-mat]"), pk = e.target.closest("[data-pick]");
@@ -1159,6 +1220,7 @@
     else if (pk) edit.pick = pk.dataset.pick;
     else return;
     renderPaintBar();
+    if (town) syncGhost();
   });
 
   // ---------- Rendering ----------
@@ -1226,13 +1288,13 @@
     if (JSON.stringify(state.place) !== before) save();
     if (selectedItem && selectedItem !== ME && !state.place[selectedItem] && !state.decor.some(d => "d:" + d.rid === selectedItem)) selectedItem = null;
     const sel = selectedItem && ITEM_BY_ID[selectedItem];
-    const occupied = new Set([...Object.values(state.place), ...state.decor.map(d => d.at)]);
+    const occupied = new Set([...Object.entries(state.place).flatMap(([id, k]) => cellsOf(k, id)), ...state.decor.map(d => d.at)]);
     const selDecor = selectedItem?.startsWith("d:") && state.decor.find(d => "d:" + d.rid === selectedItem);
     if (town) {
       const targets = [];
       if (sel) for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
         const k = tileKey(i, j);
-        if (terrain(i, j) === needs(sel) && k !== state.place[sel.id] && !state.decor.some(d => d.at === k)) targets.push(k);
+        if (k !== state.place[sel.id] && fits(sel.id, k)) targets.push(k);
       }
       if (selectedItem === ME || selDecor) for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
         const k = tileKey(i, j);
@@ -1240,17 +1302,20 @@
       }
       const [h] = nowHM();
       town.setNight(h >= 19 || h < 6);
-      town.update({ place: state.place, selected: selectedItem, targets, avatar: state.avatar || {},
+      town.update({ land: N, sizes: FOOT, place: state.place, selected: selectedItem, targets, avatar: state.avatar || {},
         watch: WATCH_COLORS[wornWatch()?.id] || null, showTent: !state.items.some(id => ITEM_BY_ID[id]?.cat === "house"),
         banner: online ? daily?.banner : null, bubble: online ? daily?.bubble : null, floor: edit?.floor || state.floor, decor: edit?.decor || state.decor });
       town.start();
+      syncGhost();
     } else $("scene").innerHTML = isoSceneSVG();
     $("moveBar").innerHTML = sel
-      ? `<span><b>${esc(sel.name)}</b>을(를) 옮길 칸을 눌러주세요</span> <button id="moveCancel">취소</button>`
+      ? `<span><b>${esc(sel.name)}</b>을(를) 옮길 칸을 눌러주세요${footOf(sel.id)[0] * footOf(sel.id)[1] > 1 ? ` (${footOf(sel.id).join("×")}칸, 누른 칸이 왼쪽 위)` : ""}</span> <button id="moveCancel">취소</button>`
       : selectedItem === ME
       ? `<span><b>캐릭터</b>가 걸어갈 빈 칸을 눌러주세요</span> <button id="moveCancel">취소</button>`
       : selDecor
       ? `<span><b>${esc(decorItem(selDecor.id)?.name || "")}</b>을(를) 옮길 빈 칸을 눌러주세요</span> <button id="moveCancel">취소</button>`
+      : unplaced().length
+      ? `<span>자리가 없어 못 놓은 물건이 <b>${unplaced().length}개</b> 있어요. 땅을 넓혀보세요!</span>`
       : `캐릭터나 물건을 누르면 다른 칸으로 옮길 수 있어요`;
     $("moveBar").classList.toggle("on", !!selectedItem);
     $("moveBar").style.display = edit ? "none" : "";
@@ -1431,6 +1496,12 @@
     clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("on"), 2200);
   }
   let stopSpin = () => {};
+  // A big purchase may not fit on my land yet.
+  function noRoomNotice(item) {
+    if (!placeable(item) || state.place[item.id]) return;
+    const [w, d] = footOf(item.id);
+    setTimeout(() => toast(`${item.name}은(는) ${w}×${d}칸이 필요해요. 내 세상에서 땅을 넓혀보세요!`), 1800);
+  }
   function celebrate(item) {
     $("cArt").innerHTML = itemSVG(item);
     stopSpin();
@@ -1475,7 +1546,7 @@
         if (!ok) { renderShop(); return; }
         ensurePlacement(); save();
         renderHeader(); renderShop();
-        if (buy) celebrate(item); else toast(`${won(Math.floor(item.price * RESALE))}을 받았어요`);
+        if (buy) { celebrate(item); noRoomNotice(item); } else toast(`${won(Math.floor(item.price * RESALE))}을 받았어요`);
       });
       return;
     }
@@ -1484,7 +1555,7 @@
       if (!item || owns(item.id) || state.cash < item.price) return;
       state.cash -= item.price; state.items.push(item.id); ensurePlacement();
       log(`${item.name} 구매 -${wonShort(item.price)}원`); save();
-      renderHeader(); renderShop(); celebrate(item);
+      renderHeader(); renderShop(); celebrate(item); noRoomNotice(item);
     } else if (sell) {
       const item = ITEM_BY_ID[sell.dataset.sellItem];
       if (!item || !owns(item.id)) return;
@@ -1694,7 +1765,7 @@
     if (!visitView) visitView = townMod.townViewer($("vStage"));
     const [h] = nowHM();
     visitView.setNight(h >= 19 || h < 6);
-    visitView.update({ place: v.place || {}, avatar: v.avatar || {}, floor: vTown?.floor || {}, decor: vTown?.decor || [], banner: v.banner, bubble: v.bubble, showTent: !(v.items || []).some(id => ITEM_BY_ID[id]?.cat === "house") });
+    visitView.update({ place: v.place || {}, avatar: v.avatar || {}, land: vTown?.land || 7, sizes: FOOT, floor: vTown?.floor || {}, decor: vTown?.decor || [], banner: v.banner, bubble: v.bubble, showTent: !(v.items || []).some(id => ITEM_BY_ID[id]?.cat === "house") });
     if (online) loadDaily(true);
     visitView.start();
   }

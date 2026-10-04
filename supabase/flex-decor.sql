@@ -1,7 +1,10 @@
--- 플렉스시티: 조경·조각상·동물 (내 동네에 나무·분수·우물·동상·동물 등을 여러 개 사서 놓기).
+-- 플렉스시티: 조경·조각상·동물 (내 동네에 나무·분수·우물·동상·동물 등을 여러 개 사서 놓기)
+-- and 땅 넓히기 (7x7 → 9x9 → 11x11 → 13x13).
 -- Run after flex-floor.sql in Supabase Dashboard → SQL Editor. Safe to re-run
 -- (re-run it whenever the catalog below grows).
 --
+-- The town is land x land tiles; the last row (j = land - 1) is the river. Expanding adds
+-- two columns on the right and two land rows above the river, so existing coordinates stay.
 -- Each placed piece is one row in flex_decor. Pieces are bought, removed (90% back) and
 -- the floor is paved together in one 완료 (flex_edit_town); moving a piece is free.
 -- Placed pieces count toward 총 재산 at their resale value, like other items.
@@ -16,6 +19,29 @@ create table if not exists public.flex_decor (
 create index if not exists flex_decor_user on public.flex_decor (user_id);
 alter table public.flex_decor enable row level security;
 revoke all on public.flex_decor from anon, authenticated;
+
+alter table public.flex_accounts add column if not exists land int not null default 7;
+
+-- Is "i,j" a tile of a town of this size? p_water: true = river only, false = land only, null = either.
+create or replace function public.flex_tile_ok(p_key text, p_land int, p_water boolean default false)
+returns boolean
+language sql
+immutable
+as $$
+  select case when coalesce(p_key, '') !~ '^[0-9]{1,2},[0-9]{1,2}$' then false
+    else split_part(p_key, ',', 1)::int < p_land
+     and split_part(p_key, ',', 2)::int < p_land
+     and (p_water is null or (split_part(p_key, ',', 2)::int = p_land - 1) = p_water) end
+$$;
+
+-- Price of growing from p_land to the next size (null = already the largest).
+create or replace function public.flex_land_price(p_land int)
+returns numeric
+language sql
+immutable
+as $$
+  select case p_land when 7 then 100000000 when 9 then 500000000 when 11 then 2000000000 end
+$$;
 
 -- Catalog. Keep in sync with DECOR in flex/decor3d.js.
 create or replace function public.flex_decor_item(p_id text, out name text, out price numeric)
@@ -61,6 +87,7 @@ security definer
 set search_path = public
 as $$
   select jsonb_build_object(
+    'land', coalesce((select land from flex_accounts where user_id = p_user), 7),
     'floor', coalesce((select floor from flex_accounts where user_id = p_user), '{}'::jsonb),
     'decor', coalesce((select jsonb_agg(jsonb_build_object('rid', id, 'id', item_id, 'at', at) order by id)
                        from flex_decor where user_id = p_user), '[]'::jsonb))
@@ -107,7 +134,7 @@ begin
   -- Floor
   if p_floor is not null and jsonb_typeof(p_floor) = 'object' then
     for k, v in select key, value #>> '{}' from jsonb_each(p_floor) loop
-      if k !~ '^[0-6],[0-5]$' then raise exception '깔 수 없는 칸이에요.'; end if;
+      if not flex_tile_ok(k, a.land) then raise exception '깔 수 없는 칸이에요.'; end if;
       price := flex_floor_price(v);
       if price is null then raise exception '없는 바닥재예요.'; end if;
       if coalesce(fl ->> k, 'dirt') = v then continue; end if;
@@ -126,7 +153,7 @@ begin
   -- Additions
   if p_add is not null and jsonb_typeof(p_add) = 'array' then
     for e in select * from jsonb_array_elements(p_add) loop
-      if coalesce(e ->> 'at', '') !~ '^[0-6],[0-5]$' then raise exception '놓을 수 없는 칸이에요.'; end if;
+      if not flex_tile_ok(e ->> 'at', a.land) then raise exception '놓을 수 없는 칸이에요.'; end if;
       select d.price into price from flex_decor_item(e ->> 'id') d;
       if price is null then raise exception '없는 물건이에요.'; end if;
       insert into flex_decor (user_id, item_id, at) values (a.user_id, e ->> 'id', e ->> 'at');
@@ -134,7 +161,7 @@ begin
       n_add := n_add + 1;
     end loop;
   end if;
-  if (select count(*) from flex_decor where user_id = a.user_id) > 42 then raise exception '더 놓을 자리가 없어요.'; end if;
+  if (select count(*) from flex_decor where user_id = a.user_id) > a.land * (a.land - 1) then raise exception '더 놓을 자리가 없어요.'; end if;
   if exists (select 1 from flex_decor where user_id = a.user_id group by at having count(*) > 1) then
     raise exception '한 칸에는 하나만 놓을 수 있어요.';
   end if;
@@ -168,11 +195,58 @@ declare
 begin
   if p_moves is null or jsonb_typeof(p_moves) <> 'object' then raise exception '잘못된 요청이에요.'; end if;
   for k, v in select key, value #>> '{}' from jsonb_each(p_moves) loop
-    if k !~ '^[0-9]+$' or v !~ '^[0-6],[0-5]$' then raise exception '옮길 수 없는 칸이에요.'; end if;
+    if k !~ '^[0-9]+$' or not flex_tile_ok(v, a.land) then raise exception '옮길 수 없는 칸이에요.'; end if;
     update flex_decor set at = v where user_id = a.user_id and id = k::bigint;
   end loop;
   if exists (select 1 from flex_decor where user_id = a.user_id group by at having count(*) > 1) then
     raise exception '한 칸에는 하나만 놓을 수 있어요.';
+  end if;
+end;
+$$;
+
+-- Grow the town to the next size. Returns the whole state plus the town.
+create or replace function public.flex_expand_land()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  a flex_accounts := flex_me();
+  price numeric := flex_land_price(a.land);
+begin
+  if price is null then raise exception '이미 가장 넓은 땅이에요.'; end if;
+  if a.cash < price then raise exception '현금이 부족해요.'; end if;
+  update flex_accounts set cash = cash - price, land = land + 2 where user_id = a.user_id;
+  insert into flex_log (user_id, text) values (a.user_id,
+    '땅 넓히기 ' || (a.land + 2) || '×' || (a.land + 2) || ' -' || flex_won_short(price) || '원');
+  return flex_state() || flex_town_of(a.user_id);
+end;
+$$;
+
+-- flex_save_look from flex.sql, now accepting tiles of a bigger town.
+create or replace function public.flex_save_look(p_place jsonb, p_avatar jsonb)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  a flex_accounts := flex_me();
+  clean jsonb := '{}'::jsonb;
+  k text;
+  v text;
+begin
+  if p_place is not null and jsonb_typeof(p_place) = 'object' then
+    for k, v in select key, value #>> '{}' from jsonb_each(p_place) loop
+      if flex_tile_ok(v, a.land, null) and exists (select 1 from flex_items where user_id = a.user_id and item_id = k) then
+        clean := clean || jsonb_build_object(k, v);
+      end if;
+    end loop;
+    update flex_accounts set place = clean where user_id = a.user_id;
+  end if;
+  if p_avatar is not null and jsonb_typeof(p_avatar) = 'object' and length(p_avatar::text) <= 1000 then
+    update flex_accounts set avatar = p_avatar where user_id = a.user_id;
   end if;
 end;
 $$;
@@ -229,7 +303,10 @@ end;
 $$;
 
 revoke execute on function public.flex_decor_item(text), public.flex_town_of(uuid), public.flex_refresh_rankings(uuid),
-  public.flex_edit_town(jsonb, jsonb, bigint[]), public.flex_move_decor(jsonb), public.flex_town(text) from public, anon;
-grant execute on function public.flex_edit_town(jsonb, jsonb, bigint[]), public.flex_move_decor(jsonb) to authenticated;
+  public.flex_edit_town(jsonb, jsonb, bigint[]), public.flex_move_decor(jsonb), public.flex_town(text),
+  public.flex_tile_ok(text, int, boolean), public.flex_land_price(int), public.flex_expand_land(),
+  public.flex_save_look(jsonb, jsonb) from public, anon;
+grant execute on function public.flex_edit_town(jsonb, jsonb, bigint[]), public.flex_move_decor(jsonb),
+  public.flex_expand_land(), public.flex_save_look(jsonb, jsonb) to authenticated;
 grant execute on function public.flex_town(text) to anon, authenticated;
 revoke execute on function public.flex_refresh_rankings(uuid) from authenticated;
