@@ -5,9 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>플렉스시티</title>
 <meta name="description" content="사이버머니 100억으로 코인 투자하고, 번 돈으로 차·시계·집을 사는 2D 가상 세계">
+<!-- Our own modules carry ?v= so a deploy isn't hidden by the browser's cached copy (bump on every change). -->
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+  "./town3d.js": "./town3d.js?v=12", "./decor3d.js": "./decor3d.js?v=12", "./models3d.js": "./models3d.js?v=12",
+  "./avatar3d.js": "./avatar3d.js?v=12", "./street3d.js": "./street3d.js?v=12" } }
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
@@ -1172,7 +1175,7 @@
     if (want === ghostFor) return;
     ghostFor = want;
     if (!want) { town.setGhost(null); return; }
-    if (edit.tab === "floor") { town.setGhost(townMod.floorTile(edit.mat), k => terrain(...parseKey(k)) === "land", { flat: true }); return; }
+    if (edit.tab === "floor") { if (townMod.floorTile) town.setGhost(townMod.floorTile(edit.mat), k => terrain(...parseKey(k)) === "land", { flat: true }); return; }
     town.setGhost(decor3d.decorModel(want, { avatar: state.avatar || {} }),
       k => { const [i, j] = parseKey(k); return terrain(i, j) === "land" && !itemAt(k) && k !== avatarPos() && !decorAt(k, edit.decor); });
   }
