@@ -93,13 +93,16 @@
   .paintbar { margin-top: 8px; }
   .paintbar .open { width: 100%; border: 1px dashed var(--line); background: var(--panel); color: var(--text); border-radius: 12px; padding: 10px; font-size: 13.5px; font-weight: 700; }
   .paintbar .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px; }
-  .paintbar .mats { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
-  .paintbar .mats button { flex: none; width: 74px; border: 2px solid transparent; background: var(--panel-2); border-radius: 12px; padding: 6px 4px; color: var(--text); font-size: 11.5px; font-weight: 700; display: grid; justify-items: center; gap: 3px; }
+  .paintbar .mats { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 7px; }
+  .paintbar .mats button { border: 2px solid transparent; background: var(--panel-2); border-radius: 12px; padding: 6px 4px; color: var(--text); font-size: 11.5px; font-weight: 700; display: grid; justify-items: center; gap: 3px; }
   .paintbar .mats button i { width: 34px; height: 22px; border-radius: 6px; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .18); }
   .paintbar .mats button small { color: var(--muted); font-weight: 600; font-size: 10.5px; }
   .paintbar .mats button.on { border-color: var(--text); background: #2a3555; }
-  .paintbar .foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 9px; font-size: 12.5px; color: var(--muted); }
-  .paintbar .foot button { border: 0; background: var(--text); color: var(--bg); border-radius: 10px; padding: 7px 16px; font-weight: 800; font-size: 13px; }
+  .paintbar .foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+  .paintbar .foot b { color: var(--text); }
+  .paintbar .foot .btns { display: flex; gap: 6px; flex: none; }
+  .paintbar .foot button { border: 0; background: var(--text); color: var(--bg); border-radius: 10px; padding: 8px 16px; font-weight: 800; font-size: 13px; }
+  .paintbar .foot button.ghost { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); }
   .movebar button { border: 1px solid var(--line); background: var(--panel-2); border-radius: 8px; padding: 4px 10px; font-size: 12px; }
   .goal { margin-top: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
   .goal .bar { height: 8px; border-radius: 6px; background: var(--panel-2); overflow: hidden; margin-top: 8px; }
@@ -966,7 +969,7 @@
     for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
       const [cx, cy] = pt(0, 0, i, j), k = tileKey(i, j), t = terrain(i, j);
       const diamond = [pt(cx, cy, -.5, -.5), pt(cx, cy, .5, -.5), pt(cx, cy, .5, .5), pt(cx, cy, -.5, .5)];
-      const fc = FLOOR_COLORS[state.floor?.[k] || "dirt"] || FLOOR_COLORS.dirt;
+      const fc = FLOOR_COLORS[(paintDraft || state.floor)?.[k] || "dirt"] || FLOOR_COLORS.dirt;
       const base = t === "water" ? (night ? "#1d3b6a" : "#4ea8de") : shade(fc, (night ? .45 : 1) * ((i + j) % 2 ? .94 : 1));
       const target = sel ? t === needs(sel) && k !== state.place[sel.id] : selectedItem === ME && t !== "water" && !byTile[k] && k !== avatarPos();
       ground += `<g data-t="${k}">` + poly(diamond, base, `stroke="${night ? "rgba(255,255,255,.06)" : "rgba(0,0,0,.08)"}"`);
@@ -1024,39 +1027,47 @@
   // ---------- Floor paving (바닥 깔기) ----------
   // FLOORS comes from town3d.js; until it loads only bare dirt is known.
   let FLOORS = [], FLOOR_COLORS = { dirt: "#9c6b43" };
+  // Paving is a draft: try materials freely (within cash), pay only when 완료 is pressed.
   let paintWith = null;            // material id while the paint panel is open
-  let paintPending = {}, paintTimer = 0;
+  let paintDraft = null;           // { "i,j": material } being tried out; state.floor stays the saved floor
   const floorPrice = id => FLOORS.find(f => f.id === id)?.price ?? 0;
-  const pendingCost = () => Object.values(paintPending).reduce((a, id) => a + floorPrice(id), 0);
+  const draftChanges = () => {
+    const out = {};
+    for (let i = 0; i < N; i++) for (let j = 0; j < RIVER_J; j++) {
+      const k = tileKey(i, j), was = state.floor[k] || "dirt", now = paintDraft[k] || "dirt";
+      if (was !== now) out[k] = now;
+    }
+    return out;
+  };
+  const draftCost = () => Object.values(draftChanges()).reduce((a, id) => a + floorPrice(id), 0);
   function paintTile(k) {
     const [i, j] = parseKey(k);
     if (terrain(i, j) === "water") { toast("강에는 바닥을 깔 수 없어요"); return; }
-    const cur = state.floor[k] || "dirt";
-    if (cur === paintWith) return;
-    const price = floorPrice(paintWith);
-    if (state.cash - (online ? pendingCost() : 0) < price) { toast("현금이 부족해요"); return; }
-    if (paintWith === "dirt") delete state.floor[k]; else state.floor[k] = paintWith;
-    if (online) {
-      // Show it right away; charge in one batch shortly after the last tap.
-      paintPending[k] = paintWith;
-      clearTimeout(paintTimer); paintTimer = setTimeout(flushPaint, 700);
-    } else {
-      state.cash -= price;
-      if (price) log(`바닥 ${FLOORS.find(f => f.id === paintWith).name} 1칸 깔기 -${wonShort(price)}원`);
-      save(); renderHeader();
-    }
+    const saved = state.floor[k] || "dirt", cur = paintDraft[k] || "dirt";
+    // Tapping a tile I just changed to this material undoes it.
+    const next = cur === paintWith && cur !== saved ? saved : paintWith;
+    if (next === cur) return;
+    const set = id => { if (id === "dirt") delete paintDraft[k]; else paintDraft[k] = id; };
+    set(next);
+    if (draftCost() > state.cash) { set(cur); toast(`현금이 부족해요 (보유 ${wonShort(state.cash)}원)`); return; }
     renderWorld();
   }
-  async function flushPaint() {
-    if (!Object.keys(paintPending).length) return;
-    if (busy) { paintTimer = setTimeout(flushPaint, 400); return; }
-    const batch = paintPending; paintPending = {};
-    const ok = await server("flex_paint_floor", { p_paint: batch });
-    if (!ok) await loadFloor();   // put back what the server actually has
-    // Taps made while the request was in flight are still pending: keep showing them.
-    for (const [k, id] of Object.entries(paintPending)) { if (id === "dirt") delete state.floor[k]; else state.floor[k] = id; }
-    renderHeader(); renderWorld();
+  async function finishPaint() {
+    const changes = draftChanges(), n = Object.keys(changes).length, cost = draftCost();
+    if (!n) { closePaint(); return; }
+    if (cost > state.cash) { toast("현금이 부족해요"); return; }
+    if (!confirm(`바닥 ${n}칸을 바꾸고 ${won(cost)}이 빠져나가요.\n완료 후에는 취소할 수 없어요. 계속할까요?`)) return;
+    if (online) {
+      if (!await server("flex_paint_floor", { p_paint: changes })) return;
+    } else {
+      state.cash -= cost; state.floor = { ...paintDraft };
+      if (cost) log(`바닥 ${n}칸 깔기 -${wonShort(cost)}원`);
+      save();
+    }
+    closePaint(); renderHeader();
+    toast(cost ? `바닥 완성! ${won(cost)}을 썼어요` : "바닥을 바꿨어요");
   }
+  function closePaint() { paintWith = null; paintDraft = null; renderWorld(); }
   async function loadFloor() {
     const { data, error } = await sb.rpc("flex_floor");
     state.floor = !error && data && typeof data === "object" ? data : {};
@@ -1065,14 +1076,16 @@
     const bar = $("paintBar");
     if (!town || !FLOORS.length) { bar.innerHTML = ""; return; }
     if (!paintWith) { bar.innerHTML = `<button class="open" id="paintOpen">🧱 바닥 깔기 · 잔디·대리석·황금 타일</button>`; return; }
-    const paved = Object.keys(state.floor).length;
+    const n = Object.keys(draftChanges()).length, cost = draftCost();
     bar.innerHTML = `<div class="panel"><div class="mats">${FLOORS.map(f =>
       `<button data-mat="${f.id}" class="${f.id === paintWith ? "on" : ""}"><i style="background:${f.color}"></i>${esc(f.name)}<small>${f.price ? wonShort(f.price) + "원" : "되돌리기"}</small></button>`).join("")}</div>
-      <div class="foot"><span>칸을 누르면 한 칸씩 깔려요 · 깐 칸 ${paved}/42</span><button id="paintDone">완료</button></div></div>`;
+      <div class="foot"><span>${n ? `바꾼 칸 <b>${n}</b> · 합계 <b>${wonShort(cost)}원</b><br>보유 현금 ${wonShort(state.cash)}원` : "칸을 눌러 깔아보세요. 같은 칸을 한 번 더 누르면 취소돼요.<br>완료를 눌러야 돈이 빠져나가요."}</span>
+      <span class="btns"><button class="ghost" id="paintCancel">취소</button><button id="paintDone">완료</button></span></div></div>`;
   }
   $("paintBar").addEventListener("click", e => {
-    if (e.target.closest("#paintOpen")) { selectedItem = null; paintWith = "grass"; renderWorld(); return; }
-    if (e.target.closest("#paintDone")) { paintWith = null; clearTimeout(paintTimer); flushPaint(); renderWorld(); return; }
+    if (e.target.closest("#paintOpen")) { selectedItem = null; paintWith = "grass"; paintDraft = { ...state.floor }; renderWorld(); return; }
+    if (e.target.closest("#paintCancel")) { closePaint(); return; }
+    if (e.target.closest("#paintDone")) { finishPaint(); return; }
     const b = e.target.closest("[data-mat]");
     if (b) { paintWith = b.dataset.mat; renderPaintBar(); }
   });
@@ -1157,7 +1170,7 @@
       town.setNight(h >= 19 || h < 6);
       town.update({ place: state.place, selected: selectedItem, targets, avatar: state.avatar || {},
         watch: WATCH_COLORS[wornWatch()?.id] || null, showTent: !state.items.some(id => ITEM_BY_ID[id]?.cat === "house"),
-        banner: online ? daily?.banner : null, bubble: online ? daily?.bubble : null, floor: state.floor });
+        banner: online ? daily?.banner : null, bubble: online ? daily?.bubble : null, floor: paintDraft || state.floor });
       town.start();
     } else $("scene").innerHTML = isoSceneSVG();
     $("moveBar").innerHTML = sel
@@ -1777,14 +1790,14 @@
     if (id === userId) return;   // getSession and INITIAL_SESSION report the same session
     userId = id;
     if (!id) {
-      online = false; state = load(); selectedItem = null; paintWith = null; paintPending = {};
+      online = false; state = load(); selectedItem = null; paintWith = null; paintDraft = null;
       renderAccount(); renderAll();
       return;
     }
     $("auth").classList.remove("on");
     const { data, error } = await sb.rpc("flex_state");
     if (error || userId !== id) { if (error) toast("계정 정보를 불러오지 못했어요: " + error.message); return; }
-    online = true; state = fromServer(data); selectedItem = null; paintWith = null; paintPending = {};
+    online = true; state = fromServer(data); selectedItem = null; paintWith = null; paintDraft = null;
     await loadFloor();
     if (userId !== id) return;
     renderAccount(); renderAll();
