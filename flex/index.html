@@ -193,6 +193,10 @@
   .auth .msg { font-size: 12.5px; color: var(--up); min-height: 16px; }
   .auth .msg.ok { color: var(--ok); }
   .auth .close { background: none; border: 0; color: var(--muted); font-size: 13px; padding: 4px; }
+  .ord { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+  .ord:last-child { border-bottom: 0; }
+  .ord small { display: block; color: var(--muted); font-size: 12px; }
+  .ord button { flex: none; border: 1px solid var(--line); background: var(--panel-2); color: var(--text); border-radius: 8px; padding: 5px 10px; font-size: 12px; }
   .rankcard { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; padding: 11px 14px; border-radius: 12px; border: 1px solid rgba(231, 194, 106, .45); background: linear-gradient(90deg, rgba(231, 194, 106, .18), rgba(231, 194, 106, .05)); color: var(--text); font-size: 14px; font-weight: 700; }
   .rankcard #rankMine { color: var(--gold); font-size: 13px; }
   .rrow { width: 100%; display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center; padding: 11px 0; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--text); text-align: left; }
@@ -247,11 +251,12 @@
   </section>
 
   <section class="view" id="view-coin">
-    <h2>코인 거래소 <span class="hint" style="font-weight:400">· 업비트 실시간 시세</span></h2>
+    <h2 id="invTitle">투자 <span class="hint" style="font-weight:400" id="invSub">· 업비트 실시간 시세</span></h2>
+    <div class="chips" id="invTabs" style="margin-bottom:10px"><button data-inv="coin" class="on">코인</button><button data-inv="stock">국내주식</button></div>
     <input class="search" id="coinSearch" placeholder="코인 이름 검색 (예: 비트, 도지, SOL)" autocomplete="off">
     <div class="hint" id="coinCount" style="margin:8px 2px">불러오는 중</div>
     <div class="coin-list" id="coinList"></div>
-    <p class="hint" style="margin-top:10px">코인을 눌러서 사고팔 수 있어요. 수수료는 0.05%예요. 내가 가진 코인이 맨 위에 와요.</p>
+    <p class="hint" style="margin-top:10px" id="invHint">코인을 눌러서 사고팔 수 있어요. 수수료는 0.05%예요. 내가 가진 코인이 맨 위에 와요.</p>
   </section>
 
   <section class="view" id="view-shop">
@@ -275,8 +280,10 @@
   </section>
 
   <section class="view" id="view-wallet">
-    <h2>보유 코인</h2>
+    <h2>보유 코인·주식</h2>
     <div class="card" id="walletCoins"></div>
+    <h2 id="ordersH" hidden>대기 중인 주식 주문</h2>
+    <div class="card" id="walletOrders" hidden></div>
     <h2>내 소유물</h2>
     <div class="card" id="walletItems"></div>
     <h2>최근 기록</h2>
@@ -378,14 +385,16 @@
     { market: "KRW-DOT", name: "폴카닷", color: "#e6007a" },
     { market: "KRW-TRX", name: "트론", color: "#c4302b" },
   ];
-  const sym = m => m.replace("KRW-", "");
+  const sym = m => m.replace("KRW-", "").replace("KRX:", "");
+  const isStock = m => m.startsWith("KRX:");
+  const unit = m => isStock(m) ? "주" : sym(m);
   const KNOWN_COLORS = Object.fromEntries(FALLBACK_COINS.map(c => [c.market, c.color]));
   const PALETTE = ["#f7931a", "#627eea", "#9945ff", "#e84142", "#2a5ada", "#e6007a", "#14b8a6", "#f59e0b", "#0ea5e9", "#84cc16", "#ec4899", "#6366f1"];
   const colorFor = m => KNOWN_COLORS[m] || PALETTE[[...m].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7) % PALETTE.length];
   let COINS = FALLBACK_COINS;
   let COIN_BY_MARKET = Object.fromEntries(COINS.map(c => [c.market, c]));
   const coinName = m => COIN_BY_MARKET[m]?.name || sym(m);
-  const iconText = m => sym(m).slice(0, 4);
+  const iconText = m => isStock(m) ? coinName(m).slice(0, 2) : sym(m).slice(0, 4);
   let listDirty = true, sortedWithVolume = false;
 
   // Every coin in Upbit's KRW market (about 200+), with Korean names.
@@ -458,7 +467,7 @@
   const cls = r => r > 0 ? "up" : r < 0 ? "down" : "flat";
 
   // ---------- State (saved in this browser) ----------
-  const fresh = () => ({ cash: START_CASH, coins: {}, items: [], place: {}, log: [], created: Date.now() });
+  const fresh = () => ({ cash: START_CASH, coins: {}, items: [], place: {}, log: [], orders: [], created: Date.now() });
   function load() {
     try {
       const s = JSON.parse(localStorage.getItem(STORE_KEY));
@@ -514,6 +523,31 @@
   // ---------- Live coin prices ----------
   const prices = {};
   let live = null, fails = 0;
+  // ---------- Korean stocks: daily closes collected by 입고수 (data/stocks) ----------
+  let STOCKS = [], stockDate = "", invType = "coin";
+  async function loadStocks() {
+    try {
+      const idx = await (await fetch("../data/stocks/latest.json", { cache: "no-cache" })).json();
+      const day = await (await fetch(`../data/stocks/${idx.latest}.json`)).json();
+      stockDate = `${+idx.latest.slice(4, 6)}/${+idx.latest.slice(6, 8)}`;
+      STOCKS = day.rows.map(([code, name, , close, changePct, tradeValue]) => {
+        const m = "KRX:" + code;
+        prices[m] = { price: close, change: (changePct || 0) / 100, volume: tradeValue || 0 };
+        return { market: m, name, color: colorFor(m) };
+      });
+      for (const c of STOCKS) COIN_BY_MARKET[c.market] = c;
+      if (invType === "stock") listDirty = true;
+      renderHeader(); renderCoins();
+    } catch (e) { /* stock list unavailable */ }
+  }
+  // Mirrors flex_fill_from() in supabase/flex-stocks.sql: the first close not yet public.
+  function nextCloseLabel() {
+    const k = new Date(Date.now() + 9 * 3600_000), dow = k.getUTCDay(), mins = k.getUTCHours() * 60 + k.getUTCMinutes();
+    if (dow >= 1 && dow <= 5 && mins < 15 * 60 + 30) return "오늘 15:30 종가";
+    const add = dow === 5 ? 3 : dow === 6 ? 2 : 1, d = new Date(k.getTime() + add * 86400_000);
+    return `${d.getUTCMonth() + 1}/${d.getUTCDate()} 종가`;
+  }
+
   async function poll() {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 4000);
@@ -536,7 +570,8 @@
   // ---------- Totals ----------
   const coinValue = () => Object.entries(state.coins).reduce((s, [m, h]) => s + (prices[m] ? h.qty * prices[m].price : h.cost), 0);
   const itemValue = () => state.items.reduce((s, id) => s + Math.floor((ITEM_BY_ID[id]?.price || 0) * RESALE), 0);
-  const totalWorth = () => state.cash + coinValue() + itemValue();
+  const orderValue = () => (state.orders || []).reduce((s, o) => s + (o.side === "buy" ? Number(o.krw) : 0), 0);
+  const totalWorth = () => state.cash + coinValue() + itemValue() + orderValue();
   const owns = id => state.items.includes(id);
   const bestOwned = cat => ITEMS.filter(i => i.cat === cat && owns(i.id)).sort((a, b) => b.price - a.price)[0] || null;
 
@@ -932,19 +967,24 @@
       // Re-sorted only on load or search, so rows don't jump while tapping.
       listDirty = false;
       const q = $("coinSearch").value.trim().toLowerCase();
-      const shown = COINS.filter(c => !q || c.name.toLowerCase().includes(q) || sym(c.market).toLowerCase().includes(q))
+      const src = invType === "stock" ? STOCKS : COINS;
+      let shown = src.filter(c => !q || c.name.toLowerCase().includes(q) || sym(c.market).toLowerCase().includes(q))
         .sort((a, b) => (state.coins[b.market] ? 1 : 0) - (state.coins[a.market] ? 1 : 0) || (prices[b.market]?.volume || 0) - (prices[a.market]?.volume || 0));
-      $("coinCount").textContent = `원화마켓 ${COINS.length}개` + (q ? ` 중 ${shown.length}개` : "") + " · 거래대금순";
+      const found = shown.length;
+      if (invType === "stock") shown = shown.slice(0, 100);
+      $("coinCount").textContent = invType === "stock"
+        ? (STOCKS.length ? `코스피·코스닥 ${STOCKS.length.toLocaleString("ko-KR")}종목` + (q ? ` 중 ${found}개` : " 중 거래대금 상위 100") + ` · ${stockDate} 종가` : "종목을 불러오는 중")
+        : `원화마켓 ${COINS.length}개` + (q ? ` 중 ${shown.length}개` : "") + " · 거래대금순";
       list.innerHTML = shown.length ? shown.map(c => `<button class="coin" data-m="${c.market}">
         <div class="cicon" style="background:${c.color};${iconText(c.market).length > 3 ? "font-size:9px" : ""}">${esc(iconText(c.market))}</div>
         <div><div class="nm">${esc(c.name)}</div><div class="mine"></div></div>
         <div class="px"><div class="p">-</div><div class="c flat">-</div></div></button>`).join("")
-        : `<div class="empty">"${esc(q)}" 코인이 없어요.</div>`;
+        : `<div class="empty">"${esc(q)}" ${invType === "stock" ? "종목" : "코인"}이 없어요.</div>`;
     }
     for (const el of list.children) {
       if (!el.dataset.m) continue;
       const m = el.dataset.m, p = prices[m], h = state.coins[m];
-      el.querySelector(".mine").textContent = h ? `보유 ${fmtQty(h.qty)} ${sym(m)}` : sym(m);
+      el.querySelector(".mine").textContent = h ? `보유 ${fmtQty(h.qty)} ${unit(m)}` : sym(m);
       if (!p) continue;
       el.querySelector(".p").textContent = fmtPrice(p.price);
       const c = el.querySelector(".c");
@@ -1029,10 +1069,17 @@
   }
 
   function renderWallet() {
+    const orders = state.orders || [];
+    $("ordersH").hidden = $("walletOrders").hidden = !orders.length;
+    $("walletOrders").innerHTML = orders.map(o => {
+      const d = o.fill_from.split("-");
+      return `<div class="ord"><div>${esc(o.name)} ${o.side === "buy" ? `<b class="up">매수</b> ${wonShort(o.krw)}원` : `<b class="down">매도</b> ${fmtQty(Number(o.qty))}주`}
+        <small>${+d[1]}/${+d[2]} 종가로 체결 예정</small></div><button data-cancel="${o.id}">취소</button></div>`;
+    }).join("");
     const coins = Object.entries(state.coins);
     $("walletCoins").innerHTML = coins.length ? coins.map(([m, h]) => {
       const p = prices[m]?.price, val = p ? h.qty * p : h.cost, r = val / h.cost - 1;
-      return `<div class="row"><div class="l">${esc(coinName(m))}<br><small>${fmtQty(h.qty)} ${sym(m)}</small></div>
+      return `<div class="row"><div class="l">${esc(coinName(m))}<br><small>${fmtQty(h.qty)} ${unit(m)}</small></div>
         <div class="r">${won(val)}<small class="${cls(r)}">${p ? fmtPct(r) : "시세 대기"} (${r >= 0 ? "+" : "-"}${wonShort(Math.abs(val - h.cost))}원)</small></div></div>`;
     }).join("") : `<div class="empty">아직 코인이 없어요. 코인 탭에서 사보세요.</div>`;
     const items = state.items.map(id => ITEM_BY_ID[id]).filter(Boolean).sort((a, b) => b.price - a.price);
@@ -1193,6 +1240,26 @@
   function closeSheet() { sheetMarket = null; $("backdrop").classList.remove("on"); $("sheet").classList.remove("on"); }
   $("backdrop").addEventListener("click", closeSheet);
   $("coinSearch").addEventListener("input", () => { listDirty = true; renderCoins(); });
+  $("invTabs").addEventListener("click", e => {
+    const b = e.target.closest("[data-inv]");
+    if (!b || b.dataset.inv === invType) return;
+    invType = b.dataset.inv;
+    for (const x of $("invTabs").children) x.classList.toggle("on", x === b);
+    const stock = invType === "stock";
+    $("invSub").textContent = stock ? "· 코스피·코스닥 · 하루 한 번 종가" : "· 업비트 실시간 시세";
+    $("coinSearch").placeholder = stock ? "종목 이름이나 코드 검색 (예: 삼성전자, 005930)" : "코인 이름 검색 (예: 비트, 도지, SOL)";
+    $("invHint").textContent = stock
+      ? "종목을 눌러서 사고팔 수 있어요. 가격은 공공데이터 종가라 하루 한 번 바뀌고, 주문은 다음 종가로 체결돼요. 수수료 0.05%."
+      : "코인을 눌러서 사고팔 수 있어요. 수수료는 0.05%예요. 내가 가진 코인이 맨 위에 와요.";
+    $("coinSearch").value = ""; listDirty = true; renderCoins();
+  });
+  $("walletOrders").addEventListener("click", async e => {
+    const b = e.target.closest("[data-cancel]");
+    if (!b || !online) return;
+    b.disabled = true;
+    if (await server("flex_cancel_order", { p_id: Number(b.dataset.cancel) })) { toast("주문을 취소했어요"); renderHeader(); }
+    renderWallet();
+  });
   $("coinList").addEventListener("click", e => { const b = e.target.closest("[data-m]"); if (b) openSheet(b.dataset.m); });
   document.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => { side = b.dataset.side; $("sAmount").value = ""; renderSheet(); }));
   $("sAmount").addEventListener("input", e => {
@@ -1214,14 +1281,14 @@
       $("sIcon").style.background = colorFor(m); $("sIcon").textContent = iconText(m);
       $("sName").textContent = coinName(m);
       document.querySelectorAll(".seg button").forEach(b => { b.classList.toggle("on", b.dataset.side === side); });
-      $("sLabel").textContent = side === "buy" ? "얼마어치 살까요? (원)" : `몇 개 팔까요? (${sym(m)})`;
+      $("sLabel").textContent = side === "buy" ? "얼마어치 살까요? (원)" : isStock(m) ? "몇 주 팔까요?" : `몇 개 팔까요? (${sym(m)})`;
       $("sQuick").innerHTML = [[.1, "10%"], [.25, "25%"], [.5, "50%"], [1, "최대"]].map(([f, l]) => `<button data-f="${f}">${l}</button>`).join("");
       $("sAmount").inputMode = side === "buy" ? "numeric" : "decimal";
     }
-    $("sPrice").textContent = p ? fmtPrice(p.price) + "원" : "시세 대기 중";
+    $("sPrice").textContent = p ? fmtPrice(p.price) + "원" + (isStock(m) ? ` (${stockDate} 종가)` : "") : "시세 대기 중";
     $("sChange").textContent = p ? fmtPct(p.change) : "";
     $("sChange").className = p ? cls(p.change) : "";
-    $("sAvail").textContent = side === "buy" ? `현금 ${wonShort(state.cash)}원` : `보유 ${h ? fmtQty(h.qty) : 0} ${sym(m)}`;
+    $("sAvail").textContent = side === "buy" ? `현금 ${wonShort(state.cash)}원` : `보유 ${h ? fmtQty(h.qty) : 0} ${unit(m)}`;
     const amt = parseNum($("sAmount").value), btn = $("sSubmit");
     btn.className = "btn " + (side === "sell" ? "sell" : "");
     btn.style.background = side === "buy" ? "var(--up)" : "";
@@ -1232,13 +1299,14 @@
       const qty = amt * (1 - COIN_FEE) / p.price;
       if (amt > state.cash) { ok = false; msg = "현금이 부족해요."; }
       else if (amt && amt < MIN_ORDER) { ok = false; msg = `최소 ${MIN_ORDER.toLocaleString("ko-KR")}원부터 살 수 있어요.`; }
-      else if (amt) msg = `약 <b>${fmtQty(qty)} ${sym(m)}</b>를 받아요. (수수료 ${Math.ceil(amt * COIN_FEE).toLocaleString("ko-KR")}원)`;
+      else if (amt) msg = `약 <b>${fmtQty(qty)} ${unit(m)}</b>를 받아요. (수수료 ${Math.ceil(amt * COIN_FEE).toLocaleString("ko-KR")}원)`;
     } else {
       const have = h?.qty || 0, gross = amt * p.price;
       if (amt > have + 1e-12) { ok = false; msg = "가진 개수보다 많아요."; }
       else if (amt && gross < MIN_ORDER) { ok = false; msg = `최소 ${MIN_ORDER.toLocaleString("ko-KR")}원어치부터 팔 수 있어요.`; }
       else if (amt) msg = `약 <b>${won(gross * (1 - COIN_FEE))}</b>을 받아요.`;
     }
+    if (online && isStock(m) && ok) msg += `<br>주식은 <b>${nextCloseLabel()}</b>로 체결돼요. 그 전까지 내 지갑에서 취소할 수 있어요.`;
     $("sPreview").innerHTML = msg;
     btn.disabled = !ok;
     btn.textContent = side === "buy" ? "사기" : "팔기";
@@ -1248,6 +1316,14 @@
     const m = sheetMarket, p = prices[m]?.price, amt = parseNum($("sAmount").value);
     if (!p || !amt) return;
     const name = coinName(m);
+    if (online && isStock(m)) {
+      const btn = $("sSubmit");
+      btn.disabled = true; btn.textContent = "주문 중…";
+      const ok = await server("flex_stock_order", { p_code: sym(m), p_side: side, p_amount: amt });
+      if (ok) { toast(`${name} ${side === "buy" ? "매수" : "매도"} 주문 완료! ${nextCloseLabel()}로 체결돼요`); $("sAmount").value = ""; }
+      renderSheet(); renderHeader(); renderCoins();
+      return;
+    }
     if (online) {
       const btn = $("sSubmit"), before = state.coins[m]?.qty || 0, cash0 = state.cash;
       btn.disabled = true; btn.textContent = "체결 중…";
@@ -1435,6 +1511,7 @@
     sb.auth.getSession().then(({ data }) => onSession(data.session));
   }
   loadMarkets().then(poll);
+  loadStocks();
   setInterval(poll, POLL_MS);
   setInterval(() => { if ($("view-world").classList.contains("on")) renderWorld(); }, 60_000);
 })();
