@@ -7,7 +7,8 @@ import { avatarModel } from "./avatar3d.js";
 
 export const N = 7, ROAD_I = 3, RIVER_J = N - 1;
 export const terrain = (i, j) => j === RIVER_J ? "water" : i === ROAD_I ? "road" : "land";
-const AVATAR_TILE = [ROAD_I, 4];
+export const AVATAR_TILE = [ROAD_I, 4];
+export const AVATAR_KEY = "@me";
 
 const mats = {};
 const mat = (c, extra = {}) => {
@@ -117,7 +118,7 @@ export function townViewer(el, { onTap } = {}) {
   // Everything that changes with the save lives in `dyn` and is rebuilt on update().
   let dyn = new THREE.Group();
   scene.add(dyn);
-  let animated = [], selGroup = null, items = [];
+  let animated = [], selGroup = null, items = [], me = null, meFrom = null, meAt = 0, lastPos = null, wasMoving = false;
   const hl = (key, color, opacity) => {
     const [i, j] = key.split(",").map(Number);
     const m = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.02, 0.96), new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false }));
@@ -126,7 +127,7 @@ export function townViewer(el, { onTap } = {}) {
     return m;
   };
 
-  // place: { itemId: "i,j" }, selected: itemId | null, targets: ["i,j"], avatar: cfg, watch: color | null
+  // place: { itemId: "i,j" }, selected: itemId | "@me" | null, targets: ["i,j"], avatar: cfg (avatar.pos = "i,j"), watch: color | null
   const sprite = (lines, opts, sx, sy) => {
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: textTexture(lines, opts), depthTest: false }));
     s.scale.set(sx, sy, 1); s.renderOrder = 10;
@@ -136,7 +137,7 @@ export function townViewer(el, { onTap } = {}) {
   function update({ place = {}, selected = null, targets = [], avatar = {}, watch = null, showTent = false, banner = null, bubble = null } = {}) {
     scene.remove(dyn);
     dyn = new THREE.Group();
-    animated = []; selGroup = null; items = [];
+    animated = []; selGroup = null; items = []; me = null;
     const taken = new Set(Object.values(place));
     for (const [id, key] of Object.entries(place)) {
       const [i, j] = key.split(",").map(Number);
@@ -162,11 +163,31 @@ export function townViewer(el, { onTap } = {}) {
     }
     for (const key of targets) dyn.add(hl(key, 0xe7c26a, 0.45));
     if (selected && place[selected]) dyn.add(hl(place[selected], 0xffd166, 0.8));
-    const me = avatarModel(avatar, watch);
+    // The avatar stands on its own tile (avatar.pos) and walks there when it changes.
+    const pos = /^[0-6],[0-6]$/.test(avatar.pos || "") ? avatar.pos : AVATAR_TILE.join(",");
+    const [ai, aj] = pos.split(",").map(Number);
+    me = avatarModel(avatar, watch);
     me.scale.setScalar(0.42);
-    me.position.set(tileX(AVATAR_TILE[0]) + 0.25, 0.1, tileZ(AVATAR_TILE[1]));
+    me.position.set(tileX(ai) + (taken.has(pos) ? 0.25 : 0), 0.1, tileZ(aj));
     me.rotation.y = 0.6;
+    me.userData.base = me.position.y;
+    me.userData.to = me.position.clone();
+    // Walk only after the player moved it, not when a viewer switches to another user's town.
+    if (wasMoving && lastPos && lastPos.key !== pos) {
+      meFrom = lastPos.v.clone(); meAt = performance.now();
+      const d = me.userData.to.clone().sub(meFrom);
+      me.rotation.y = Math.atan2(d.x, d.z);
+      me.position.copy(meFrom);
+    } else if (meFrom) me.position.copy(meFrom);
+    lastPos = { key: pos, v: me.userData.to.clone() };
+    wasMoving = selected === AVATAR_KEY;
+    // Invisible, bigger tap target: the little avatar is hard to hit with a finger.
+    const hit = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 3.4, 8), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }));
+    hit.position.y = 1.7;
+    me.add(hit);
+    me.traverse(o => { o.userData.key = AVATAR_KEY; });
     dyn.add(me);
+    if (selected === AVATAR_KEY) { selGroup = me; dyn.add(hl(pos, 0xffd166, 0.8)); }
     if (bubble) {
       const b = sprite([bubble], { w: 640, h: 128, bg: "#ffffff", fg: "#1d2433", size: 46 }, 2.6, 0.52);
       b.position.set(me.position.x, 1.35, me.position.z);
@@ -204,8 +225,8 @@ export function townViewer(el, { onTap } = {}) {
     const r = renderer.domElement.getBoundingClientRect();
     ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
-    // Bought items win over the ground; trees and the avatar are ignored so they never block a tap.
-    const hit = ray.intersectObjects(items, true)[0] || ray.intersectObjects(tiles, false)[0];
+    // The avatar and bought items win over the ground; trees are ignored so they never block a tap.
+    const hit = ray.intersectObjects(me ? [me, ...items] : items, true)[0] || ray.intersectObjects(tiles, false)[0];
     if (hit && onTap) onTap(hit.object.userData.key);
   });
 
@@ -226,6 +247,12 @@ export function townViewer(el, { onTap } = {}) {
       if (g.userData.spin) g.userData.spin.rotation.y = t * 12;
       if (g.userData.bob) { g.position.y = Math.sin(t * 1.5) * 0.03; g.rotation.z = Math.sin(t * 1.1) * 0.04; }
       if (g.userData.float) g.userData.float.position.y = 0.55 + Math.sin(t * 0.8) * 0.12;
+    }
+    if (me && meFrom) {
+      const k = Math.min(1, (performance.now() - meAt) / 600);
+      me.position.lerpVectors(meFrom, me.userData.to, k);
+      me.position.y = me.userData.base + Math.abs(Math.sin(k * Math.PI * 3)) * 0.06;
+      if (k === 1) meFrom = null;
     }
     if (selGroup) selGroup.position.y = selGroup.userData.base + 0.08 + Math.sin(t * 5) * 0.05;
     waters.forEach((w, k) => w.position.y = 0.01 + Math.sin(t * 1.2 + k) * 0.015);

@@ -30,7 +30,7 @@
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", "Malgun Gothic", sans-serif;
     -webkit-font-smoothing: antialiased;
-    padding-bottom: calc(76px + env(safe-area-inset-bottom));
+    padding-bottom: calc(92px + env(safe-area-inset-bottom));
   }
   button { font: inherit; color: inherit; cursor: pointer; }
   .wrap { max-width: 560px; margin: 0 auto; padding: 0 16px; }
@@ -54,13 +54,21 @@
   /* Tabs */
   nav.tabs {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
-    background: rgba(13, 18, 32, .96); backdrop-filter: blur(8px);
-    border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom);
+    background: linear-gradient(180deg, #1c2540, #10172a); backdrop-filter: blur(8px);
+    border-top: 2px solid var(--gold); padding-bottom: env(safe-area-inset-bottom);
+    box-shadow: 0 -6px 24px rgba(231, 194, 106, .22);
   }
-  nav.tabs .wrap { display: grid; grid-template-columns: repeat(5, 1fr); padding: 0; }
-  nav.tabs button { background: none; border: 0; padding: 10px 0 12px; font-size: 12px; color: var(--muted); display: grid; justify-items: center; gap: 3px; }
-  nav.tabs button svg { width: 22px; height: 22px; }
-  nav.tabs button.on { color: var(--gold); }
+  nav.tabs .wrap { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; padding: 6px 6px 8px; }
+  nav.tabs button { background: none; border: 0; border-radius: 14px; padding: 7px 0 6px; font-size: 13px; font-weight: 700; color: #d5dcec; display: grid; justify-items: center; gap: 3px; transition: background .15s, color .15s, transform .15s; }
+  nav.tabs button svg { width: 26px; height: 26px; }
+  nav.tabs button:active { transform: scale(.94); }
+  nav.tabs button.on { color: var(--gold-ink); background: var(--gold); box-shadow: 0 2px 12px rgba(231, 194, 106, .45); }
+  /* First-visit hint pointing at the menu */
+  .navhint { position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 11;
+    background: var(--gold); color: var(--gold-ink); font-weight: 800; font-size: 13.5px; padding: 9px 14px; border-radius: 12px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, .4); white-space: nowrap; animation: navhint 1.2s ease-in-out infinite; cursor: pointer; }
+  .navhint::after { content: ""; position: absolute; left: 50%; bottom: -7px; margin-left: -7px; border: 7px solid transparent; border-bottom: 0; border-top-color: var(--gold); }
+  @keyframes navhint { 50% { transform: translateX(-50%) translateY(-5px); } }
 
   section.view { display: none; padding: 6px 0 20px; }
   section.view.on { display: block; }
@@ -342,6 +350,7 @@
   </div>
 </nav>
 
+<div class="navhint" id="navHint" hidden>👇 아래 메뉴에서 투자·거리·캐릭터로 가요</div>
 <div class="backdrop" id="backdrop"></div>
 <div class="sheet" id="sheet">
   <div class="top">
@@ -927,7 +936,9 @@
     }
   }
 
-  let selectedItem = null;
+  let selectedItem = null;   // an item id, or ME while moving the avatar
+  const ME = "@me";
+  const avatarPos = () => /^[0-6],[0-6]$/.test(state.avatar?.pos || "") ? state.avatar.pos : tileKey(...AVATAR_TILE);
   function isoSceneSVG() {
     const [h] = nowHM();
     const night = h >= 19 || h < 6, dusk = h >= 17 && h < 19;
@@ -945,7 +956,7 @@
       const [cx, cy] = pt(0, 0, i, j), k = tileKey(i, j), t = terrain(i, j);
       const diamond = [pt(cx, cy, -.5, -.5), pt(cx, cy, .5, -.5), pt(cx, cy, .5, .5), pt(cx, cy, -.5, .5)];
       const base = t === "water" ? (night ? "#1d3b6a" : "#4ea8de") : t === "road" ? (night ? "#2a2f3a" : "#8d9096") : ((i + j) % 2 ? (night ? "#24452f" : "#74c365") : (night ? "#284d34" : "#7ccc6c"));
-      const target = sel && t === needs(sel) && k !== state.place[sel.id];
+      const target = sel ? t === needs(sel) && k !== state.place[sel.id] : selectedItem === ME && t !== "water" && !byTile[k] && k !== avatarPos();
       ground += `<g data-t="${k}">` + poly(diamond, base, `stroke="${night ? "rgba(255,255,255,.06)" : "rgba(0,0,0,.08)"}"`);
       if (t === "road") { const [a, b] = [pt(cx, cy, 0, -.45), pt(cx, cy, 0, .45)]; ground += `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="#f1f3f5" stroke-width="1.6" stroke-dasharray="7 6"/>`; }
       if (t === "water") { const [a, b] = [pt(cx, cy, -.3, -.1), pt(cx, cy, .2, -.1)]; ground += `<path d="M${a[0]} ${a[1]} q6 -3 12 0 t12 0" stroke="rgba(255,255,255,.35)" fill="none"/>`; void b; }
@@ -957,8 +968,9 @@
       else if (t === "land" && !hasHouse && i === 1 && j === 4) objects.push({ d: i + j, svg: `<g data-t="${k}">${tent(cx, cy)}</g>` });
       else if (t === "land" && (i * 3 + j * 5) % 7 === 0) objects.push({ d: i + j, svg: `<g data-t="${k}">${tree(cx, cy, night)}</g>` });
     }
-    const [ax, ay] = pt(0, 0, ...AVATAR_TILE);
-    objects.push({ d: AVATAR_TILE[0] + AVATAR_TILE[1] + .5, svg: `<g transform="translate(${ax + 14} ${ay - 46}) scale(.7)" pointer-events="none">${avatar(watchColor, rich)}</g>` });
+    const [ai, aj] = parseKey(avatarPos()), [ax, ay] = pt(0, 0, ai, aj);
+    if (selectedItem === ME) ground += poly([pt(ax, ay, -.5, -.5), pt(ax, ay, .5, -.5), pt(ax, ay, .5, .5), pt(ax, ay, -.5, .5)], "rgba(231,194,106,.45)", `stroke="#e7c26a" stroke-width="2.5"`);
+    objects.push({ d: ai + aj + .5, svg: `<g data-t="${ME}" style="cursor:pointer" transform="translate(${ax + (byTile[avatarPos()] ? 14 : 0)} ${ay - 46}) scale(.7)">${avatar(watchColor, rich)}</g>` });
     objects.sort((a, b) => a.d - b.d);
 
     let stars = "";
@@ -977,9 +989,17 @@
     if (g) tapTile(g.dataset.t);
   }
   function tapTile(k) {
+    if (k === ME) { selectedItem = selectedItem === ME ? null : ME; renderWorld(); return; }
     const [i, j] = parseKey(k), here = Object.keys(state.place).find(id => state.place[id] === k);
     if (!selectedItem) {
       if (here) { selectedItem = here; renderWorld(); }
+      return;
+    }
+    if (selectedItem === ME) {
+      if (terrain(i, j) === "water") { toast("캐릭터는 강에 들어갈 수 없어요"); return; }
+      if (here) { toast("물건이 없는 빈 칸을 눌러주세요"); return; }
+      state.avatar = { ...(state.avatar || {}), pos: k };
+      selectedItem = null; save(); renderWorld();
       return;
     }
     const item = ITEM_BY_ID[selectedItem];
@@ -1053,13 +1073,18 @@
     const before = JSON.stringify(state.place);
     ensurePlacement();
     if (JSON.stringify(state.place) !== before) save();
-    if (selectedItem && !state.place[selectedItem]) selectedItem = null;
+    if (selectedItem && selectedItem !== ME && !state.place[selectedItem]) selectedItem = null;
     const sel = selectedItem && ITEM_BY_ID[selectedItem];
+    const occupied = new Set(Object.values(state.place));
     if (town) {
       const targets = [];
       if (sel) for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
         const k = tileKey(i, j);
         if (terrain(i, j) === needs(sel) && k !== state.place[sel.id]) targets.push(k);
+      }
+      if (selectedItem === ME) for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+        const k = tileKey(i, j);
+        if (terrain(i, j) !== "water" && !occupied.has(k) && k !== avatarPos()) targets.push(k);
       }
       const [h] = nowHM();
       town.setNight(h >= 19 || h < 6);
@@ -1069,9 +1094,11 @@
       town.start();
     } else $("scene").innerHTML = isoSceneSVG();
     $("moveBar").innerHTML = sel
-      ? `<b>${esc(sel.name)}</b>을(를) 옮길 칸을 눌러주세요 <button id="moveCancel">취소</button>`
-      : `물건을 누르면 다른 칸으로 옮길 수 있어요`;
-    $("moveBar").classList.toggle("on", !!sel);
+      ? `<span><b>${esc(sel.name)}</b>을(를) 옮길 칸을 눌러주세요</span> <button id="moveCancel">취소</button>`
+      : selectedItem === ME
+      ? `<span><b>캐릭터</b>가 걸어갈 빈 칸을 눌러주세요</span> <button id="moveCancel">취소</button>`
+      : `캐릭터나 물건을 누르면 다른 칸으로 옮길 수 있어요`;
+    $("moveBar").classList.toggle("on", !!selectedItem);
     const slots = [["house", "집", "텐트"], ["car", "차", "없음"], ["watch", "시계", "없음"], ["special", "특별", "없음"]];
     $("ownedStrip").innerHTML = slots.map(([cat, label, none]) => {
       const it = cat === "special" ? ITEMS.filter(i => i.cat === "special" && owns(i.id)).sort((a, b) => b.price - a.price)[0] : bestOwned(cat);
@@ -1203,7 +1230,15 @@
   function renderAll() { renderHeader(); renderCoins(); renderWorld(); renderShop(); renderWallet(); }
 
   // ---------- Tabs ----------
-  document.querySelectorAll("nav.tabs button").forEach(b => b.addEventListener("click", () => showView(b.dataset.view)));
+  document.querySelectorAll("nav.tabs button").forEach(b => b.addEventListener("click", () => { hideNavHint(); showView(b.dataset.view); }));
+  // Point first-time visitors at the bottom menu until they use it once.
+  const NAV_HINT_KEY = "flex_nav_hint_done";
+  function hideNavHint() {
+    $("navHint").hidden = true;
+    try { localStorage.setItem(NAV_HINT_KEY, "1"); } catch (e) { /* ignore */ }
+  }
+  try { if (!localStorage.getItem(NAV_HINT_KEY)) $("navHint").hidden = false; } catch (e) { $("navHint").hidden = false; }
+  $("navHint").addEventListener("click", hideNavHint);
   function showView(v) {
     document.querySelectorAll("nav.tabs button").forEach(x => x.classList.toggle("on", x.dataset.view === (v === "shop" ? "street" : v)));
     document.querySelectorAll("section.view").forEach(s => s.classList.toggle("on", s.id === "view-" + v));
