@@ -218,7 +218,21 @@
   .visit .vhead b { font-size: 17px; }
   .visit .vhead span { color: var(--gold); font-weight: 700; font-size: 13px; flex: 1; }
   .visit .vhead button { border: 1px solid var(--line); background: var(--panel-2); color: var(--text); border-radius: 8px; padding: 6px 12px; }
-  .visit .vstage { aspect-ratio: 1 / 1; max-height: 60vh; width: 100%; border-radius: 12px; overflow: hidden; background: #182038; }
+  .visit .vbox { max-height: 94vh; overflow-y: auto; }
+  .vsocial { display: flex; gap: 8px; align-items: center; margin: 10px 0 4px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+  .vsocial button { border: 1px solid var(--line); background: var(--panel-2); color: var(--text); border-radius: 999px; padding: 6px 12px; font-weight: 700; }
+  .vsocial button.on { background: #ff5a5f; border-color: #ff5a5f; color: #fff; }
+  .pf { margin-top: 8px; }
+  .pf .r { display: grid; grid-template-columns: 1fr auto; gap: 8px; font-size: 13px; padding: 3px 0; }
+  .pf .bar { height: 5px; border-radius: 3px; background: var(--line); grid-column: 1 / -1; overflow: hidden; }
+  .pf .bar i { display: block; height: 100%; background: var(--gold); }
+  .daily { margin-top: 12px; }
+  .daily .m { display: flex; justify-content: space-between; font-size: 13.5px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .daily .m:last-of-type { border-bottom: 0; }
+  .daily .m b.done { color: var(--ok); }
+  .daily .acts { display: flex; gap: 8px; margin-top: 10px; }
+  .daily .acts .btn { flex: 1; }
+  .visit .vstage { aspect-ratio: 1 / 1; max-height: 42vh; width: 100%; border-radius: 12px; overflow: hidden; background: #182038; }
   footer { font-size: 11.5px; color: var(--muted); text-align: center; padding: 24px 0 8px; line-height: 1.6; }
 </style>
 </head>
@@ -253,6 +267,8 @@
     <div class="movebar" id="moveBar"></div>
     <div class="owned-strip" id="ownedStrip"></div>
     <div class="goal" id="goal"></div>
+    <div class="card daily" id="dailyCard" style="padding:12px 14px"></div>
+    <div class="card daily" id="signCard" style="padding:12px 14px"></div>
   </section>
 
   <section class="view" id="view-coin">
@@ -359,7 +375,10 @@
   <div class="vbox">
     <div class="vhead"><b id="vName"></b><span id="vWorth"></span><button id="vClose">닫기</button></div>
     <div class="vstage" id="vStage"></div>
-    <div class="hint" id="vItems" style="margin-top:8px"></div>
+    <div class="vsocial"><button id="vLike">🤍 좋아요</button><span id="vLikes"></span><span id="vVisits"></span></div>
+    <div class="hint" id="vBubble"></div>
+    <div class="hint" id="vItems" style="margin-top:6px"></div>
+    <div class="pf" id="vPf"></div>
   </div>
 </div>
 <div class="auth" id="auth">
@@ -534,6 +553,7 @@
       const { data, error } = await sb.rpc(fn, args);
       if (error) { toast(error.message); return false; }
       state = fromServer(data);
+      setTimeout(() => loadDaily(true), 0);   // mission progress may have changed
       return true;
     } catch (e) {
       toast("서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.");
@@ -1044,7 +1064,8 @@
       const [h] = nowHM();
       town.setNight(h >= 19 || h < 6);
       town.update({ place: state.place, selected: selectedItem, targets, avatar: state.avatar || {},
-        watch: WATCH_COLORS[wornWatch()?.id] || null, showTent: !state.items.some(id => ITEM_BY_ID[id]?.cat === "house") });
+        watch: WATCH_COLORS[wornWatch()?.id] || null, showTent: !state.items.some(id => ITEM_BY_ID[id]?.cat === "house"),
+        banner: online ? daily?.banner : null, bubble: online ? daily?.bubble : null });
       town.start();
     } else $("scene").innerHTML = isoSceneSVG();
     $("moveBar").innerHTML = sel
@@ -1193,7 +1214,7 @@
     if (v === "me") renderMe(); else if (avView) avView.stop();
     if (v !== "world" && town) town.stop();
     if (v === "rank") loadRanking();
-    if (v === "world") refreshRankCard();
+    if (v === "world") { refreshRankCard(); loadDaily(); }
     window.scrollTo(0, 0);
   }
 
@@ -1440,13 +1461,98 @@
     $("vWorth").textContent = v.worth != null ? "총 재산 " + wonShort(v.worth) + "원" : "";
     const names = (v.items || []).map(id => ITEM_BY_ID[id]).filter(Boolean).sort((a, b) => b.price - a.price).map(i => i.name);
     $("vItems").textContent = names.length ? "소유물: " + names.join(", ") : "아직 산 물건이 없어요.";
+    visitNick = v.nickname;
+    renderLike(v.likes, v.liked, v.me);
+    $("vVisits").textContent = `👀 오늘 ${v.visits_today ?? 0}명 · 누적 ${v.visits_total ?? 0}명`;
+    $("vBubble").textContent = v.bubble ? `💬 "${v.bubble}"` : "";
+    // Portfolio: value each holding at the prices this page already has.
+    const rows = Object.entries(v.holdings || {}).map(([m, q]) => ({ name: coinName(m), val: prices[m] ? q * prices[m].price : 0 })).filter(r => r.val > 0);
+    const cash = Number(v.cash || 0), total = rows.reduce((t, r) => t + r.val, cash);
+    rows.sort((a, b) => b.val - a.val);
+    const top = rows.slice(0, 5), pct = x => total ? (x / total * 100) : 0;
+    const line = (n, x) => `<div class="r"><span>${esc(n)}</span><b>${pct(x).toFixed(1)}%</b><div class="bar"><i style="width:${pct(x).toFixed(1)}%"></i></div></div>`;
+    $("vPf").innerHTML = `<b style="font-size:13.5px">📊 모의투자 보유 비중</b>` +
+      top.map(r => line(r.name, r.val)).join("") + (rows.length > 5 ? line("기타", rows.slice(5).reduce((t, r) => t + r.val, 0)) : "") + line("현금", cash) +
+      `<div class="hint" style="font-size:11.5px;margin-top:4px">게임 속 가상 투자예요. 투자 권유가 아니에요.</div>`;
     $("visit").classList.add("on");
     if (!townMod) { $("vStage").textContent = "3D를 불러오지 못했어요."; return; }
     if (!visitView) visitView = townMod.townViewer($("vStage"));
     const [h] = nowHM();
     visitView.setNight(h >= 19 || h < 6);
-    visitView.update({ place: v.place || {}, avatar: v.avatar || {}, showTent: !(v.items || []).some(id => ITEM_BY_ID[id]?.cat === "house") });
+    visitView.update({ place: v.place || {}, avatar: v.avatar || {}, banner: v.banner, bubble: v.bubble, showTent: !(v.items || []).some(id => ITEM_BY_ID[id]?.cat === "house") });
+    if (online) loadDaily(true);
     visitView.start();
+  }
+
+  let visitNick = null;
+  function renderLike(likes, liked, mine) {
+    const b = $("vLike");
+    b.hidden = !!mine;
+    b.classList.toggle("on", !!liked);
+    b.textContent = liked ? "❤️ 좋아요 취소" : "🤍 좋아요";
+    $("vLikes").textContent = `❤️ ${likes ?? 0}`;
+  }
+  $("vLike").addEventListener("click", async () => {
+    if (!online) { openAuth("signup"); return; }
+    const { data, error } = await sb.rpc("flex_like", { p_nickname: visitNick });
+    if (error) { toast(error.message); return; }
+    renderLike(data.likes, data.liked, false);
+    loadDaily(true);
+  });
+
+  // ---------- Daily treasure & missions, banner & bubble (supabase/flex-social.sql) ----------
+  let daily = null, dailyAt = 0;
+  async function loadDaily(force = false) {
+    if (!online) { daily = null; renderDaily(); return; }
+    if (!force && Date.now() - dailyAt < 20_000) return;
+    dailyAt = Date.now();
+    const { data } = await sb.rpc("flex_daily_status");
+    if (data) { daily = data; renderDaily(); if ($("view-world").classList.contains("on")) renderWorld(); }
+  }
+  function renderDaily() {
+    if (!online || !daily) {
+      $("dailyCard").innerHTML = `<b>🎁 오늘의 보물상자 · 일일 미션</b><div class="hint" style="margin-top:6px">가입하면 매일 보물상자(3,000만원)와 미션 보상(5,000만원)을 받을 수 있어요.</div>`;
+      $("signCard").innerHTML = `<b>🪧 현수막 · 💬 말풍선</b><div class="hint" style="margin-top:6px">가입하면 내 공간과 거리의 내 땅에 현수막과 말풍선을 달 수 있어요.</div>`;
+      return;
+    }
+    const d = daily, done = (n, goal) => n >= goal;
+    const m = (label, n, goal) => `<div class="m"><span>${label}</span><b class="${done(n, goal) ? "done" : ""}">${Math.min(n, goal)}/${goal}${done(n, goal) ? " ✓" : ""}</b></div>`;
+    const all = done(d.visits, 3) && done(d.likes, 1) && done(d.trades, 1);
+    $("dailyCard").innerHTML = `<b>📅 오늘의 할 일</b>
+      ${m("👀 다른 사람 땅 3곳 구경하기", d.visits, 3)}${m("❤️ 좋아요 1번 누르기", d.likes, 1)}${m("💸 코인·주식 거래 또는 쇼핑 1번", d.trades, 1)}
+      <div class="acts">
+        <button class="btn" id="claimMissions" ${!all || d.missions_claimed ? "disabled" : ""}>${d.missions_claimed ? "미션 보상 받음 ✓" : "미션 보상 5,000만원"}</button>
+        <button class="btn ghost" id="findTreasure" ${d.treasure ? "disabled" : ""}>${d.treasure ? "보물상자 열었음 ✓" : "🎁 보물상자 찾기"}</button>
+      </div>
+      <div class="hint" style="margin-top:6px;font-size:12px">${d.treasure ? "내일 또 새로운 보물상자가 거리에 숨겨져요." : `힌트: 오늘의 보물상자는 청담 플렉스 거리의 ${d.treasure_lot + 1}번째 부자 땅 근처에 있어요. 찾아서 누르면 3,000만원!`}</div>`;
+    const left = t => { const h = Math.max(0, Math.round((t - Date.now()) / 3600_000)); return h >= 24 ? `${Math.round(h / 24)}일 남음` : `${h}시간 남음`; };
+    $("signCard").innerHTML = `<b>🪧 내 공간 꾸미기</b>
+      <div class="m"><span>❤️ 받은 좋아요</span><b>${d.my_likes}</b></div>
+      <div class="m"><span>👀 방문자 (오늘 / 누적)</span><b>${d.my_visits_today} / ${d.my_visits_total}</b></div>
+      <div class="m"><span>🪧 현수막</span><b>${d.banner ? `"${esc(d.banner)}" · ${left(d.banner_until)}` : "없음"}</b></div>
+      <div class="m"><span>💬 말풍선</span><b>${d.bubble ? `"${esc(d.bubble)}" · ${left(d.bubble_until)}` : "없음"}</b></div>
+      <div class="acts"><button class="btn ghost" id="setBanner">현수막 걸기 (1억·7일)</button><button class="btn ghost" id="setBubble">말풍선 (3천만·3일)</button></div>
+      <div class="hint" style="margin-top:6px;font-size:12px">현수막은 거리의 내 땅에도 걸려요 (랭킹 16위 안일 때). 링크·연락처는 적을 수 없어요.</div>`;
+  }
+  async function setSign(kind) {
+    const label = kind === "banner" ? "현수막 문구 (20자 이내, 1억원 · 7일)" : "말풍선 문구 (30자 이내, 3,000만원 · 3일)";
+    const text = prompt(label);
+    if (text === null || !text.trim()) return;
+    if (await server("flex_set_sign", { p_kind: kind, p_text: text })) { toast(kind === "banner" ? "현수막을 걸었어요 🪧" : "말풍선을 달았어요 💬"); renderHeader(); loadDaily(true); streetAt = 0; }
+  }
+  document.addEventListener("click", async e => {
+    const id = e.target.id;
+    if (id === "setBanner") setSign("banner");
+    else if (id === "setBubble") setSign("bubble");
+    else if (id === "claimMissions") { if (await server("flex_claim_missions", {})) { toast("미션 완료! 5,000만원을 받았어요 🎉"); renderHeader(); loadDaily(true); } }
+    else if (id === "findTreasure") showView("street");
+  });
+  async function claimTreasure() {
+    if (!online) { openAuth("signup"); return; }
+    if (await server("flex_claim_treasure", {})) {
+      toast("🎁 보물상자를 열었어요! 3,000만원 획득");
+      renderHeader(); await loadDaily(true); streetAt = 0; loadStreet();
+    } else loadDaily(true);
   }
 
   // ---------- 청담 플렉스 거리 (street3d.js, supabase/flex-street.sql) ----------
@@ -1461,7 +1567,7 @@
     if (!$("view-street").classList.contains("on")) return;
     if (!street) {
       street = streetMod.streetViewer($("streetStage"), {
-        onTap: t => t.type === "shop" ? goShop(t.cat) : openVisit(t.nickname),
+        onTap: t => t.type === "shop" ? goShop(t.cat) : t.type === "treasure" ? claimTreasure() : openVisit(t.nickname),
       });
     }
     const [h] = nowHM();
@@ -1472,13 +1578,14 @@
   async function loadStreet() {
     let d = { lots: [], feed: [] };
     if (sb) { const { data } = await sb.rpc("flex_street"); if (data) d = data; }
-    street.update({ lots: d.lots || [], me: online ? state.nickname : null });
+    street.update({ lots: d.lots || [], me: online ? state.nickname : null, treasureLot: d.treasure_lot ?? -1, treasureOpen: !!daily?.treasure });
     const news = [];
     for (const f of d.feed || []) {
       const it = ITEM_BY_ID[f.item];
       if (it) news.push(`🔥 ${f.nickname}님이\n${it.name} 구매!`);
     }
     if (d.lots?.[0]) news.unshift(`👑 오늘의 1위\n${d.lots[0].nickname} · ${wonShort(d.lots[0].worth)}원`);
+    if (d.hot) news.splice(1, 0, `🔥 오늘의 핫플\n${d.hot.nickname}님 땅 · 방문 ${d.hot.visits}명`);
     const btc = prices["KRW-BTC"];
     if (btc) news.push(`비트코인\n${fmtPrice(btc.price)}원 (${fmtPct(btc.change)})`);
     if (!news.length) news.push("청담 플렉스 거리에\n오신 걸 환영해요!");
@@ -1557,6 +1664,7 @@
   function renderAccount() {
     renderRankCard(null);
     rankCardAt = 0; refreshRankCard();
+    daily = null; renderDaily(); if (online) loadDaily(true);
     $("acctBtn").textContent = online ? (state.nickname || "내 계정") : "로그인";
     $("guestBar").classList.toggle("on", !online);
     $("logoutBtn").hidden = !online;

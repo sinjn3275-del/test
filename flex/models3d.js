@@ -101,6 +101,26 @@ export function carModel(id) {
   return g;
 }
 
+// Text on a canvas, as a texture.
+export function textTexture(lines, { w = 512, h = 128, bg = "#111827", fg = "#ffffff", accent = "#e7c26a", size = 44 } = {}) {
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  const g = cv.getContext("2d");
+  g.fillStyle = bg; g.fillRect(0, 0, w, h);
+  g.textAlign = "center"; g.textBaseline = "middle";
+  const font = '"Apple SD Gothic Neo","Noto Sans KR",sans-serif';
+  lines.forEach((t, k) => {
+    const s = k === 0 ? size : size * 0.62;
+    g.font = `${k === 0 ? 800 : 600} ${s}px ${font}`;
+    g.fillStyle = k === 0 ? fg : accent;
+    let txt = t;
+    while (g.measureText(txt).width > w - 24 && txt.length > 2) txt = txt.slice(0, -2) + "…";
+    g.fillText(txt, w / 2, h / 2 + (k - (lines.length - 1) / 2) * size * 0.95);
+  });
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
 // ---------- Houses, specials, watches ----------
 export const windowMat = mat("#a8dadc", { emissive: "#000000" });
 function windows(g, w, h, d, floors, y0 = 0) {

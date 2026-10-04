@@ -1,7 +1,7 @@
 // "청담 플렉스 거리": a 3D street with the shops at the entrance and lots for the
 // top players along both sides. Drag (or scroll) to walk along it; tap a shop or lot.
 import * as THREE from "three";
-import { itemModel, windowMat } from "./models3d.js";
+import { itemModel, windowMat, textTexture } from "./models3d.js";
 
 const mats = {};
 const mat = (c, extra = {}) => {
@@ -16,26 +16,6 @@ function mesh(geo, color, x = 0, y = 0, z = 0, extra) {
 }
 const box = (w, h, d, c, x, y, z, extra) => mesh(new THREE.BoxGeometry(w, h, d), c, x, y + h / 2, z, extra);
 
-// Text on a canvas, as a texture.
-function textTexture(lines, { w = 512, h = 128, bg = "#111827", fg = "#ffffff", accent = "#e7c26a", size = 44 } = {}) {
-  const cv = document.createElement("canvas");
-  cv.width = w; cv.height = h;
-  const g = cv.getContext("2d");
-  g.fillStyle = bg; g.fillRect(0, 0, w, h);
-  g.textAlign = "center"; g.textBaseline = "middle";
-  const font = '"Apple SD Gothic Neo","Noto Sans KR",sans-serif';
-  lines.forEach((t, k) => {
-    const s = k === 0 ? size : size * 0.62;
-    g.font = `${k === 0 ? 800 : 600} ${s}px ${font}`;
-    g.fillStyle = k === 0 ? fg : accent;
-    let txt = t;
-    while (g.measureText(txt).width > w - 24 && txt.length > 2) txt = txt.slice(0, -2) + "…";
-    g.fillText(txt, w / 2, h / 2 + (k - (lines.length - 1) / 2) * size * 0.95);
-  });
-  const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
 function sign(lines, w, h, opts) {
   const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: textTexture(lines, opts) }));
   return m;
@@ -134,11 +114,11 @@ export function streetViewer(el, { onTap } = {}) {
   });
 
   // Lots: rebuilt on update().
-  let lotGroup = new THREE.Group();
+  let lotGroup = new THREE.Group(), treasure = null;
   scene.add(lotGroup);
-  function update({ lots = [], me = null } = {}) {
+  function update({ lots = [], me = null, treasureLot = -1, treasureOpen = false } = {}) {
     scene.remove(lotGroup);
-    lotGroup = new THREE.Group();
+    lotGroup = new THREE.Group(); treasure = null;
     for (let k = 0; k < LOTS; k++) {
       const [x, z] = lotPos(k), face = 1, p = lots[k];
       const g = new THREE.Group();
@@ -153,9 +133,14 @@ export function streetViewer(el, { onTap } = {}) {
         if (sp) { sp.position.set(0.7, 0.08, -face * 0.5); g.add(sp); }
         if (!house && !car && !sp) g.add(mesh(new THREE.ConeGeometry(0.45, 0.6, 4), "#e07a4a", 0, 0.38, 0));
         const medal = ["🥇", "🥈", "🥉"][p.rank - 1] || `${p.rank}위`;
-        const sg = sign([`${medal} ${p.nickname}${me && p.nickname === me ? " (나)" : ""}`, `${Math.round(p.worth / 1e8).toLocaleString("ko-KR")}억`],
+        const sg = sign([`${medal} ${p.nickname}${me && p.nickname === me ? " (나)" : ""}`, `${Math.round(p.worth / 1e8).toLocaleString("ko-KR")}억 · ❤️ ${p.likes || 0}`],
           1.7, 0.5, { w: 512, h: 150, bg: me && p.nickname === me ? "#3b2f0b" : "#111827", size: 50 });
         sg.position.set(0, 0.42, face * 1.22); if (face < 0) sg.rotation.y = Math.PI; g.add(sg);
+        if (p.banner) {
+          const bn = new THREE.Sprite(new THREE.SpriteMaterial({ map: textTexture([p.banner], { w: 640, h: 128, bg: "#b8860b", fg: "#1b1b1f", size: 50 }) }));
+          bn.scale.set(2.2, 0.44, 1); bn.position.set(0, 3.1, 0); g.add(bn);
+          g.add(box(0.04, 3.0, 0.04, "#2b2d42", -1.05, 0, -0.9)); g.add(box(0.04, 3.0, 0.04, "#2b2d42", 1.05, 0, -0.9));
+        }
         tag(g, { type: "lot", nickname: p.nickname });
       } else {
         const sg = sign(["빈 땅", "랭킹 16위 안에 들면 입주"], 1.5, 0.42, { w: 512, h: 140, bg: "#2b2d42", size: 52 });
@@ -164,6 +149,18 @@ export function streetViewer(el, { onTap } = {}) {
       g.add(box(0.06, 0.32, 0.06, "#2b2d42", 0, 0.08, face * 1.2));
       g.position.set(x, 0, z);
       lotGroup.add(g);
+      if (k === treasureLot && !treasureOpen) {
+        // Today's treasure box, on the sidewalk in front of the lot.
+        const t = new THREE.Group();
+        t.add(box(0.42, 0.32, 0.42, "#e63946", 0, 0, 0));
+        t.add(box(0.46, 0.08, 0.46, "#c1121f", 0, 0.32, 0));
+        t.add(box(0.08, 0.41, 0.44, "#ffd166", 0, 0, 0)); t.add(box(0.44, 0.41, 0.08, "#ffd166", 0, 0, 0));
+        t.add(mesh(new THREE.TorusGeometry(0.08, 0.025, 6, 12), "#ffd166", 0, 0.47, 0));
+        t.position.set(x + 0.9, 0.05, -1.25);
+        t.userData.spinBox = true;
+        lotGroup.add(tag(t, { type: "treasure" }));
+        treasure = t;
+      }
     }
     scene.add(lotGroup);
   }
@@ -231,6 +228,7 @@ export function streetViewer(el, { onTap } = {}) {
     camera.position.set(camX, back * 0.62, back);
     camera.lookAt(camX, 0.9, -1.8);
     sun.position.set(camX + 6, 12, 6); sun.target.position.set(camX, 0, 0);
+    if (treasure) { treasure.rotation.y = t * 1.5; treasure.position.y = 0.05 + Math.abs(Math.sin(t * 3)) * 0.15; }
     for (const c of traffic) { c.position.x += c.userData.dir * 0.03; if (c.position.x > END_X + 3) c.position.x = -3; if (c.position.x < -3) c.position.x = END_X + 3; }
     if (t - lineAt > 4 || lineAt === 0) { showLine(lines[lineK % lines.length]); lineK++; lineAt = t || 0.001; }
     renderer.render(scene, camera);
@@ -240,6 +238,7 @@ export function streetViewer(el, { onTap } = {}) {
   return {
     update, setNews, setNight, resize,
     goTo(x) { camX = x; vel = 0; },
+    lotX: k => lotPos(k)[0],
     start() { if (!raf) { resize(); raf = requestAnimationFrame(loop); } },
     stop() { cancelAnimationFrame(raf); raf = 0; },
   };

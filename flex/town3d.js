@@ -2,7 +2,7 @@
 // tap-to-select/move via raycasting, day/night.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { carModel, itemModel, windowMat } from "./models3d.js";
+import { carModel, itemModel, windowMat, textTexture } from "./models3d.js";
 import { avatarModel } from "./avatar3d.js";
 
 export const N = 7, ROAD_I = 3, RIVER_J = N - 1;
@@ -127,7 +127,13 @@ export function townViewer(el, { onTap } = {}) {
   };
 
   // place: { itemId: "i,j" }, selected: itemId | null, targets: ["i,j"], avatar: cfg, watch: color | null
-  function update({ place = {}, selected = null, targets = [], avatar = {}, watch = null, showTent = false } = {}) {
+  const sprite = (lines, opts, sx, sy) => {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: textTexture(lines, opts), depthTest: false }));
+    s.scale.set(sx, sy, 1); s.renderOrder = 10;
+    return s;
+  };
+  // banner: 현수막 text over the back of the island; bubble: 말풍선 over the avatar.
+  function update({ place = {}, selected = null, targets = [], avatar = {}, watch = null, showTent = false, banner = null, bubble = null } = {}) {
     scene.remove(dyn);
     dyn = new THREE.Group();
     animated = []; selGroup = null; items = [];
@@ -161,6 +167,16 @@ export function townViewer(el, { onTap } = {}) {
     me.position.set(tileX(AVATAR_TILE[0]) + 0.25, 0.1, tileZ(AVATAR_TILE[1]));
     me.rotation.y = 0.6;
     dyn.add(me);
+    if (bubble) {
+      const b = sprite([bubble], { w: 640, h: 128, bg: "#ffffff", fg: "#1d2433", size: 46 }, 2.6, 0.52);
+      b.position.set(me.position.x, 1.35, me.position.z);
+      dyn.add(b);
+    }
+    if (banner) {
+      const b = sprite([banner, "현수막"], { w: 768, h: 170, bg: "#b8860b", fg: "#1b1b1f", accent: "#fff3b0", size: 66 }, 5.4, 1.2);
+      b.position.set(-0.5, 2.6, -3.2);
+      dyn.add(b);
+    }
     scene.add(dyn);
   }
 
