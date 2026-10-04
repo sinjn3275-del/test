@@ -1,13 +1,26 @@
-// 3D low-poly town for the "내 세상" tab (and lowpoly.html): tiles, bought items, avatar,
-// tap-to-select/move via raycasting, day/night.
+// 3D low-poly town for the "내 세상" tab (and lowpoly.html): my own 7x7 plot of dirt that
+// can be paved tile by tile, bought items, avatar, tap-to-select/move via raycasting, day/night.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { carModel, itemModel, windowMat, textTexture } from "./models3d.js";
+import { itemModel, windowMat, textTexture } from "./models3d.js";
 import { avatarModel } from "./avatar3d.js";
 
-export const N = 7, ROAD_I = 3, RIVER_J = N - 1;
-export const terrain = (i, j) => j === RIVER_J ? "water" : i === ROAD_I ? "road" : "land";
-export const AVATAR_TILE = [ROAD_I, 4];
+export const N = 7, RIVER_J = N - 1;
+export const terrain = (i, j) => j === RIVER_J ? "water" : "land";
+export const AVATAR_TILE = [3, 4];
+
+// Floor materials bought per tile. Prices must match flex_floor_price() in supabase/flex-floor.sql.
+export const FLOORS = [
+  { id: "dirt", name: "흙", price: 0, color: "#9c6b43" },
+  { id: "grass", name: "잔디", price: 1_000_000, color: "#6ab04c" },
+  { id: "gravel", name: "자갈", price: 2_000_000, color: "#b5ada0" },
+  { id: "concrete", name: "콘크리트", price: 3_000_000, color: "#a9aeb5" },
+  { id: "brick", name: "보도블록", price: 5_000_000, color: "#c26a4f" },
+  { id: "deck", name: "나무 데크", price: 8_000_000, color: "#a8743f" },
+  { id: "marble", name: "대리석", price: 20_000_000, color: "#ece7df" },
+  { id: "gold", name: "황금 타일", price: 100_000_000, color: "#e9c46a" },
+];
+export const FLOOR_BY_ID = Object.fromEntries(FLOORS.map(f => [f.id, f]));
 export const AVATAR_KEY = "@me";
 
 const mats = {};
@@ -23,15 +36,37 @@ function mesh(geo, color, x = 0, y = 0, z = 0, extra) {
 }
 const box = (w, h, d, c, x, y, z, extra) => mesh(new THREE.BoxGeometry(w, h, d), c, x, y + h / 2, z, extra);
 const tileX = i => i - (N - 1) / 2, tileZ = j => j - (N - 1) / 2;
-const lampMat = mat("#fff3b0", { emissive: "#000000" });
 
-function tree(x, z, s = 1) {
-  const g = new THREE.Group();
-  g.add(mesh(new THREE.CylinderGeometry(0.05 * s, 0.07 * s, 0.3 * s, 5), "#6b4f3a", 0, 0.15 * s, 0));
-  g.add(mesh(new THREE.ConeGeometry(0.28 * s, 0.6 * s, 6), "#40916c", 0, 0.55 * s, 0));
-  g.add(mesh(new THREE.ConeGeometry(0.2 * s, 0.4 * s, 6), "#52b788", 0, 0.85 * s, 0));
-  g.position.set(x, 0.1, z);
-  return g;
+// Small seamless canvas texture per floor material so tiles read as grass/brick/wood, not flat color.
+const floorMats = {};
+function floorMat(id) {
+  if (floorMats[id]) return floorMats[id];
+  const f = FLOOR_BY_ID[id] || FLOOR_BY_ID.dirt, S = 64;
+  const c = document.createElement("canvas"); c.width = c.height = S;
+  const x = c.getContext("2d");
+  x.fillStyle = f.color; x.fillRect(0, 0, S, S);
+  let seed = id.length * 97;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const specks = (n, colors, r) => { for (let k = 0; k < n; k++) { x.fillStyle = colors[k % colors.length]; x.fillRect(rnd() * S, rnd() * S, r, r); } };
+  const lines = (color, w, pts) => { x.strokeStyle = color; x.lineWidth = w; x.beginPath(); for (const [a, b, c2, d] of pts) { x.moveTo(a, b); x.lineTo(c2, d); } x.stroke(); };
+  if (id === "dirt") specks(140, ["#8a5d38", "#ad7a50", "#7a5232"], 2);
+  else if (id === "grass") specks(260, ["#5c9e40", "#7cc35c", "#4f8f37"], 2);
+  else if (id === "gravel") specks(220, ["#8f887c", "#d2ccc2", "#a29a8d"], 3);
+  else if (id === "concrete") { specks(90, ["#9ca1a8", "#b8bcc2"], 2); lines("#8d9299", 2, [[0, 0, S, 0], [0, 0, 0, S]]); }
+  else if (id === "brick") {
+    for (let r = 0; r < 4; r++) lines("#8e4a36", 2, [[0, r * 16, S, r * 16]]);
+    for (let r = 0; r < 4; r++) for (let q = 0; q < 2; q++) { const cx = q * 32 + (r % 2) * 16; lines("#8e4a36", 2, [[cx, r * 16, cx, r * 16 + 16]]); }
+  } else if (id === "deck") { for (let r = 0; r < 4; r++) lines("#7a5128", 2, [[0, r * 16, S, r * 16]]); specks(40, ["#966532"], 2); }
+  else if (id === "marble") { lines("#c9c2b6", 1.5, [[0, 20, 30, 34], [30, 34, 64, 26], [10, 64, 40, 44], [40, 44, 64, 52]]); lines("#d8d2c8", 2, [[0, 0, S, 0], [0, 0, 0, S]]); }
+  else if (id === "gold") {
+    const g = x.createLinearGradient(0, 0, S, S); g.addColorStop(0, "#f7dc8a"); g.addColorStop(0.5, "#d4a73c"); g.addColorStop(1, "#f2cf6b");
+    x.fillStyle = g; x.fillRect(0, 0, S, S); lines("#b88a22", 2, [[0, 0, S, 0], [0, 0, 0, S], [0, 32, S, 32], [32, 0, 32, S]]);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.magFilter = THREE.NearestFilter;
+  const extra = id === "gold" ? { metalness: 0.6, roughness: 0.35 } : id === "marble" ? { roughness: 0.4 } : {};
+  return floorMats[id] = new THREE.MeshStandardMaterial({ map: t, flatShading: true, roughness: 0.9, ...extra });
 }
 
 // ---------- Items ----------
@@ -88,24 +123,13 @@ export function townViewer(el, { onTap } = {}) {
   ground.add(box(N + 0.6, 0.6, N + 0.6, "#7f5539", 0, -0.6, 0));
   const waters = [];
   for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
-    const t = terrain(i, j), x = tileX(i), z = tileZ(j);
+    const x = tileX(i), z = tileZ(j);
     let m;
-    if (t === "water") { m = box(1, 0.06, 1, "#48cae4", x, -0.02, z, { transparent: true, opacity: 0.9, roughness: 0.2, metalness: 0.1 }); waters.push(m); }
-    else if (t === "road") { m = box(1, 0.1, 1, "#495057", x, 0, z); ground.add(box(0.06, 0.005, 0.4, "#f8f9fa", x, 0.1, z)); }
-    else m = box(0.98, 0.1, 0.98, (i + j) % 2 ? "#74c69d" : "#6ab88f", x, 0, z);
+    if (terrain(i, j) === "water") { m = box(1, 0.06, 1, "#48cae4", x, -0.02, z, { transparent: true, opacity: 0.9, roughness: 0.2, metalness: 0.1 }); waters.push(m); }
+    else m = box(0.98, 0.1, 0.98, floorMat("dirt"), x, 0, z);
     m.userData.key = i + "," + j;
     tiles.push(m); ground.add(m);
   }
-  for (const j of [0, 2, 4]) {
-    const x = tileX(ROAD_I) + 0.45, z = tileZ(j);
-    ground.add(mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.6, 5), "#343a40", x, 0.4, z));
-    ground.add(mesh(new THREE.SphereGeometry(0.05, 6, 4), lampMat, x, 0.72, z));
-  }
-
-  const traffic = carModel("car-sedan");
-  traffic.scale.setScalar(0.7);
-  traffic.position.set(tileX(ROAD_I) - 0.2, 0.1, 0);
-  scene.add(traffic);
 
   const clouds = [];
   for (let k = 0; k < 4; k++) {
@@ -127,14 +151,16 @@ export function townViewer(el, { onTap } = {}) {
     return m;
   };
 
-  // place: { itemId: "i,j" }, selected: itemId | "@me" | null, targets: ["i,j"], avatar: cfg (avatar.pos = "i,j"), watch: color | null
+  // place: { itemId: "i,j" }, selected: itemId | "@me" | null, targets: ["i,j"], avatar: cfg (avatar.pos = "i,j"), watch: color | null,
+  // floor: { "i,j": material } (missing = dirt)
   const sprite = (lines, opts, sx, sy) => {
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: textTexture(lines, opts), depthTest: false }));
     s.scale.set(sx, sy, 1); s.renderOrder = 10;
     return s;
   };
   // banner: 현수막 text over the back of the island; bubble: 말풍선 over the avatar.
-  function update({ place = {}, selected = null, targets = [], avatar = {}, watch = null, showTent = false, banner = null, bubble = null } = {}) {
+  function update({ place = {}, selected = null, targets = [], avatar = {}, watch = null, showTent = false, banner = null, bubble = null, floor = {} } = {}) {
+    for (const m of tiles) if (terrain(...m.userData.key.split(",").map(Number)) === "land") m.material = floorMat(floor[m.userData.key] || "dirt");
     scene.remove(dyn);
     dyn = new THREE.Group();
     animated = []; selGroup = null; items = []; me = null;
@@ -150,17 +176,7 @@ export function townViewer(el, { onTap } = {}) {
       if (g.userData.spin || g.userData.bob || g.userData.float) animated.push(g);
       if (id === selected) selGroup = g;
     }
-    for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
-      const key = i + "," + j;
-      if (terrain(i, j) !== "land" || taken.has(key)) continue;
-      if (showTent && i === 1 && j === 4) { const t = tent(); t.position.set(tileX(i), 0.1, tileZ(j)); t.traverse(o => { o.userData.key = key; }); dyn.add(t); continue; }
-      if ((i * 3 + j * 5) % 7) continue;
-      for (const [dx, dz, s] of [[-0.2, -0.15, 0.9], [0.25, 0.2, 0.7]]) {
-        const t = tree(tileX(i) + dx, tileZ(j) + dz, s);
-        t.traverse(o => { o.userData.key = key; });
-        dyn.add(t);
-      }
-    }
+    if (showTent && !taken.has("1,4")) { const t = tent(); t.position.set(tileX(1), 0.1, tileZ(4)); t.traverse(o => { o.userData.key = "1,4"; }); dyn.add(t); }
     for (const key of targets) dyn.add(hl(key, 0xe7c26a, 0.45));
     if (selected && place[selected]) dyn.add(hl(place[selected], 0xffd166, 0.8));
     // The avatar stands on its own tile (avatar.pos) and walks there when it changes.
@@ -212,7 +228,6 @@ export function townViewer(el, { onTap } = {}) {
     hemi.intensity = night ? 0.35 : 0.9;
     windowMat.emissive.set(night ? "#ffd166" : "#000000");
     windowMat.color.set(night ? "#ffd166" : "#a8dadc");
-    lampMat.emissive.set(night ? "#fff3b0" : "#000000");
   }
 
   // Tap (pointer that barely moved) → raycast to a tile/item key.
@@ -225,7 +240,7 @@ export function townViewer(el, { onTap } = {}) {
     const r = renderer.domElement.getBoundingClientRect();
     ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
-    // The avatar and bought items win over the ground; trees are ignored so they never block a tap.
+    // The avatar and bought items win over the ground.
     const hit = ray.intersectObjects(me ? [me, ...items] : items, true)[0] || ray.intersectObjects(tiles, false)[0];
     if (hit && onTap) onTap(hit.object.userData.key);
   });
@@ -256,7 +271,6 @@ export function townViewer(el, { onTap } = {}) {
     }
     if (selGroup) selGroup.position.y = selGroup.userData.base + 0.08 + Math.sin(t * 5) * 0.05;
     waters.forEach((w, k) => w.position.y = 0.01 + Math.sin(t * 1.2 + k) * 0.015);
-    traffic.position.z = tileZ(0) + ((t * 0.8) % (N - 1));
     clouds.forEach(c => { c.position.x += 0.004; if (c.position.x > 10) c.position.x = -10; });
     controls.update();
     renderer.render(scene, camera);

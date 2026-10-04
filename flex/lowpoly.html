@@ -32,6 +32,8 @@
 import { townViewer } from "./town3d.js";
 
 // Shown when this browser has no save yet, so the preview isn't empty.
+const DEMO_FLOOR = { "1,1": "marble", "5,1": "marble", "0,4": "deck", "2,4": "brick", "3,4": "brick", "4,4": "brick", "4,3": "concrete", "4,5": "concrete", "6,4": "gold", "5,0": "concrete",
+  "0,0": "grass", "1,0": "grass", "2,0": "grass", "0,1": "grass", "2,1": "grass", "0,2": "grass", "1,2": "grass", "2,2": "grass", "3,2": "gravel", "3,3": "gravel" };
 const DEMO = { "house-apt": "1,1", "house-penthouse": "5,1", "house-mansion": "0,4", "car-super": "2,4", "car-sports": "4,3", "car-hyper": "4,5", "sp-heli": "6,4", "sp-jet": "5,0", "sp-yacht": "1,6" };
 let save = {};
 try { save = JSON.parse(localStorage.getItem("flexcity.v1")) || {}; } catch (e) { /* no save */ }
@@ -39,7 +41,7 @@ const demo = !save.place || !Object.keys(save.place).length;
 document.getElementById("label").textContent = demo ? "3D 미리보기 (예시 동네)" : "내 세상 3D";
 
 const town = townViewer(document.getElementById("town"));
-town.update({ place: demo ? DEMO : save.place, avatar: save.avatar || {} });
+town.update({ place: demo ? DEMO : save.place, avatar: save.avatar || {}, floor: demo ? DEMO_FLOOR : save.floor || {} });
 const h = new Date().getHours();
 const setNight = v => { town.setNight(v); document.getElementById("dayBtn").textContent = v ? "🌙 밤" : "☀️ 낮"; };
 setNight(h >= 19 || h < 6);

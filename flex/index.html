@@ -90,6 +90,16 @@
   .scene.is3d { aspect-ratio: 1 / 1.1; max-height: 72vh; width: 100%; }
   .movebar { margin-top: 8px; font-size: 12.5px; color: var(--muted); text-align: center; min-height: 30px; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 10px; padding: 4px 8px; }
   .movebar.on { background: rgba(231, 194, 106, .14); color: var(--text); }
+  .paintbar { margin-top: 8px; }
+  .paintbar .open { width: 100%; border: 1px dashed var(--line); background: var(--panel); color: var(--text); border-radius: 12px; padding: 10px; font-size: 13.5px; font-weight: 700; }
+  .paintbar .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px; }
+  .paintbar .mats { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .paintbar .mats button { flex: none; width: 74px; border: 2px solid transparent; background: var(--panel-2); border-radius: 12px; padding: 6px 4px; color: var(--text); font-size: 11.5px; font-weight: 700; display: grid; justify-items: center; gap: 3px; }
+  .paintbar .mats button i { width: 34px; height: 22px; border-radius: 6px; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .18); }
+  .paintbar .mats button small { color: var(--muted); font-weight: 600; font-size: 10.5px; }
+  .paintbar .mats button.on { border-color: var(--text); background: #2a3555; }
+  .paintbar .foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 9px; font-size: 12.5px; color: var(--muted); }
+  .paintbar .foot button { border: 0; background: var(--text); color: var(--bg); border-radius: 10px; padding: 7px 16px; font-weight: 800; font-size: 13px; }
   .movebar button { border: 1px solid var(--line); background: var(--panel-2); border-radius: 8px; padding: 4px 10px; font-size: 12px; }
   .goal { margin-top: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
   .goal .bar { height: 8px; border-radius: 6px; background: var(--panel-2); overflow: hidden; margin-top: 8px; }
@@ -279,6 +289,7 @@
     <button class="rankcard" id="rankCard"><span>🏆 플렉스 랭킹</span><span id="rankMine">보러 가기 ›</span></button>
     <div class="scene" id="scene"></div>
     <div class="movebar" id="moveBar"></div>
+    <div class="paintbar" id="paintBar"></div>
     <div class="goal" id="goal"></div>
     <div class="card daily" id="dailyCard" style="padding:12px 14px"></div>
     <div class="card daily" id="signCard" style="padding:12px 14px"></div>
@@ -529,7 +540,7 @@
   const cls = r => r > 0 ? "up" : r < 0 ? "down" : "flat";
 
   // ---------- State (saved in this browser) ----------
-  const fresh = () => ({ cash: START_CASH, coins: {}, items: [], place: {}, log: [], orders: [], created: Date.now() });
+  const fresh = () => ({ cash: START_CASH, coins: {}, items: [], place: {}, floor: {}, log: [], orders: [], created: Date.now() });
   function load() {
     try {
       const s = JSON.parse(localStorage.getItem(STORE_KEY));
@@ -566,7 +577,7 @@
     try {
       const { data, error } = await sb.rpc(fn, args);
       if (error) { toast(error.message); return false; }
-      state = fromServer(data);
+      state = fromServer({ floor: state.floor, ...data });   // floor comes separately (flex_floor)
       setTimeout(() => loadDaily(true), 0);   // mission progress may have changed
       return true;
     } catch (e) {
@@ -810,15 +821,15 @@
   }
 
   // ---------- Isometric town ----------
-  // 7x7 tiles: column i=3 is a road, row j=6 is the river, everything else is my land.
-  const N = 7, TW = 96, TH = 48, ROAD_I = 3, RIVER_J = N - 1;
-  const terrain = (i, j) => j === RIVER_J ? "water" : i === ROAD_I ? "road" : "land";
+  // 7x7 tiles: row j=6 is the river, everything else is my land (bare dirt until paved).
+  const N = 7, TW = 96, TH = 48, RIVER_J = N - 1;
+  const terrain = (i, j) => j === RIVER_J ? "water" : "land";
   const tileKey = (i, j) => i + "," + j;
   const parseKey = k => k.split(",").map(Number);
   const placeable = item => item && item.cat !== "watch";
   const WATER_ITEMS = ["sp-yacht", "sp-superyacht", "sp-sub"];
   const needs = item => WATER_ITEMS.includes(item.id) ? "water" : "land";
-  const AVATAR_TILE = [ROAD_I, 4];
+  const AVATAR_TILE = [3, 4];
 
   // Ground point for tile-local coords (a along i, b along j, both in tile units) at height z.
   const pt = (cx, cy, a, b, z = 0) => [cx + (a - b) * TW / 2, cy + (a + b) * TH / 2 - z];
@@ -910,11 +921,6 @@
     return "";
   }
 
-  function tree(cx, cy, night) {
-    const [x, y] = pt(cx, cy, 0, 0);
-    const g = night ? "#1f4d36" : "#40916c";
-    return `<rect x="${x - 2}" y="${y - 16}" width="4" height="16" fill="#6b4f3a"/><circle cx="${x}" cy="${y - 26}" r="13" fill="${g}"/><circle cx="${x - 7}" cy="${y - 20}" r="8" fill="${shade(g, .85)}"/>`;
-  }
   function tent(cx, cy) { return pyramid(cx, cy, .5, 34, "#e07a4a"); }
 
   // Keep every placeable owned item on a valid, unique tile.
@@ -960,10 +966,10 @@
     for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
       const [cx, cy] = pt(0, 0, i, j), k = tileKey(i, j), t = terrain(i, j);
       const diamond = [pt(cx, cy, -.5, -.5), pt(cx, cy, .5, -.5), pt(cx, cy, .5, .5), pt(cx, cy, -.5, .5)];
-      const base = t === "water" ? (night ? "#1d3b6a" : "#4ea8de") : t === "road" ? (night ? "#2a2f3a" : "#8d9096") : ((i + j) % 2 ? (night ? "#24452f" : "#74c365") : (night ? "#284d34" : "#7ccc6c"));
+      const fc = FLOOR_COLORS[state.floor?.[k] || "dirt"] || FLOOR_COLORS.dirt;
+      const base = t === "water" ? (night ? "#1d3b6a" : "#4ea8de") : shade(fc, (night ? .45 : 1) * ((i + j) % 2 ? .94 : 1));
       const target = sel ? t === needs(sel) && k !== state.place[sel.id] : selectedItem === ME && t !== "water" && !byTile[k] && k !== avatarPos();
       ground += `<g data-t="${k}">` + poly(diamond, base, `stroke="${night ? "rgba(255,255,255,.06)" : "rgba(0,0,0,.08)"}"`);
-      if (t === "road") { const [a, b] = [pt(cx, cy, 0, -.45), pt(cx, cy, 0, .45)]; ground += `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="#f1f3f5" stroke-width="1.6" stroke-dasharray="7 6"/>`; }
       if (t === "water") { const [a, b] = [pt(cx, cy, -.3, -.1), pt(cx, cy, .2, -.1)]; ground += `<path d="M${a[0]} ${a[1]} q6 -3 12 0 t12 0" stroke="rgba(255,255,255,.35)" fill="none"/>`; void b; }
       if (target) ground += poly(diamond, "rgba(231,194,106,.28)", `stroke="#e7c26a" stroke-width="1.5" stroke-dasharray="4 3"`);
       if (sel && state.place[sel.id] === k) ground += poly(diamond, "rgba(231,194,106,.45)", `stroke="#e7c26a" stroke-width="2.5"`);
@@ -971,7 +977,6 @@
       const id = byTile[k];
       if (id) objects.push({ d: i + j, svg: `<g data-t="${k}" data-item="${id}" style="cursor:pointer">${isoObject(ITEM_BY_ID[id], cx, cy, night)}</g>` });
       else if (t === "land" && !hasHouse && i === 1 && j === 4) objects.push({ d: i + j, svg: `<g data-t="${k}">${tent(cx, cy)}</g>` });
-      else if (t === "land" && (i * 3 + j * 5) % 7 === 0) objects.push({ d: i + j, svg: `<g data-t="${k}">${tree(cx, cy, night)}</g>` });
     }
     const [ai, aj] = parseKey(avatarPos()), [ax, ay] = pt(0, 0, ai, aj);
     if (selectedItem === ME) ground += poly([pt(ax, ay, -.5, -.5), pt(ax, ay, .5, -.5), pt(ax, ay, .5, .5), pt(ax, ay, -.5, .5)], "rgba(231,194,106,.45)", `stroke="#e7c26a" stroke-width="2.5"`);
@@ -994,6 +999,7 @@
     if (g) tapTile(g.dataset.t);
   }
   function tapTile(k) {
+    if (paintWith) { paintTile(k === ME ? avatarPos() : k); return; }
     if (k === ME) { selectedItem = selectedItem === ME ? null : ME; renderWorld(); return; }
     const [i, j] = parseKey(k), here = Object.keys(state.place).find(id => state.place[id] === k);
     if (!selectedItem) {
@@ -1014,6 +1020,62 @@
     state.place[selectedItem] = k;
     selectedItem = null; save(); renderWorld();
   }
+
+  // ---------- Floor paving (바닥 깔기) ----------
+  // FLOORS comes from town3d.js; until it loads only bare dirt is known.
+  let FLOORS = [], FLOOR_COLORS = { dirt: "#9c6b43" };
+  let paintWith = null;            // material id while the paint panel is open
+  let paintPending = {}, paintTimer = 0;
+  const floorPrice = id => FLOORS.find(f => f.id === id)?.price ?? 0;
+  const pendingCost = () => Object.values(paintPending).reduce((a, id) => a + floorPrice(id), 0);
+  function paintTile(k) {
+    const [i, j] = parseKey(k);
+    if (terrain(i, j) === "water") { toast("강에는 바닥을 깔 수 없어요"); return; }
+    const cur = state.floor[k] || "dirt";
+    if (cur === paintWith) return;
+    const price = floorPrice(paintWith);
+    if (state.cash - (online ? pendingCost() : 0) < price) { toast("현금이 부족해요"); return; }
+    if (paintWith === "dirt") delete state.floor[k]; else state.floor[k] = paintWith;
+    if (online) {
+      // Show it right away; charge in one batch shortly after the last tap.
+      paintPending[k] = paintWith;
+      clearTimeout(paintTimer); paintTimer = setTimeout(flushPaint, 700);
+    } else {
+      state.cash -= price;
+      if (price) log(`바닥 ${FLOORS.find(f => f.id === paintWith).name} 1칸 깔기 -${wonShort(price)}원`);
+      save(); renderHeader();
+    }
+    renderWorld();
+  }
+  async function flushPaint() {
+    if (!Object.keys(paintPending).length) return;
+    if (busy) { paintTimer = setTimeout(flushPaint, 400); return; }
+    const batch = paintPending; paintPending = {};
+    const ok = await server("flex_paint_floor", { p_paint: batch });
+    if (!ok) await loadFloor();   // put back what the server actually has
+    // Taps made while the request was in flight are still pending: keep showing them.
+    for (const [k, id] of Object.entries(paintPending)) { if (id === "dirt") delete state.floor[k]; else state.floor[k] = id; }
+    renderHeader(); renderWorld();
+  }
+  async function loadFloor() {
+    const { data, error } = await sb.rpc("flex_floor");
+    state.floor = !error && data && typeof data === "object" ? data : {};
+  }
+  function renderPaintBar() {
+    const bar = $("paintBar");
+    if (!town || !FLOORS.length) { bar.innerHTML = ""; return; }
+    if (!paintWith) { bar.innerHTML = `<button class="open" id="paintOpen">🧱 바닥 깔기 · 잔디·대리석·황금 타일</button>`; return; }
+    const paved = Object.keys(state.floor).length;
+    bar.innerHTML = `<div class="panel"><div class="mats">${FLOORS.map(f =>
+      `<button data-mat="${f.id}" class="${f.id === paintWith ? "on" : ""}"><i style="background:${f.color}"></i>${esc(f.name)}<small>${f.price ? wonShort(f.price) + "원" : "되돌리기"}</small></button>`).join("")}</div>
+      <div class="foot"><span>칸을 누르면 한 칸씩 깔려요 · 깐 칸 ${paved}/42</span><button id="paintDone">완료</button></div></div>`;
+  }
+  $("paintBar").addEventListener("click", e => {
+    if (e.target.closest("#paintOpen")) { selectedItem = null; paintWith = "grass"; renderWorld(); return; }
+    if (e.target.closest("#paintDone")) { paintWith = null; clearTimeout(paintTimer); flushPaint(); renderWorld(); return; }
+    const b = e.target.closest("[data-mat]");
+    if (b) { paintWith = b.dataset.mat; renderPaintBar(); }
+  });
 
   // ---------- Rendering ----------
   function renderHeader() {
@@ -1095,7 +1157,7 @@
       town.setNight(h >= 19 || h < 6);
       town.update({ place: state.place, selected: selectedItem, targets, avatar: state.avatar || {},
         watch: WATCH_COLORS[wornWatch()?.id] || null, showTent: !state.items.some(id => ITEM_BY_ID[id]?.cat === "house"),
-        banner: online ? daily?.banner : null, bubble: online ? daily?.bubble : null });
+        banner: online ? daily?.banner : null, bubble: online ? daily?.bubble : null, floor: state.floor });
       town.start();
     } else $("scene").innerHTML = isoSceneSVG();
     $("moveBar").innerHTML = sel
@@ -1104,6 +1166,8 @@
       ? `<span><b>캐릭터</b>가 걸어갈 빈 칸을 눌러주세요</span> <button id="moveCancel">취소</button>`
       : `캐릭터나 물건을 누르면 다른 칸으로 옮길 수 있어요`;
     $("moveBar").classList.toggle("on", !!selectedItem);
+    $("moveBar").style.display = paintWith ? "none" : "";
+    renderPaintBar();
     const next = ITEMS.filter(i => !owns(i.id)).sort((a, b) => a.price - b.price).find(i => i.price > state.cash)
       || ITEMS.filter(i => !owns(i.id)).sort((a, b) => b.price - a.price)[0];
     const goal = $("goal");
@@ -1175,6 +1239,7 @@
   let town = null, townMod = null;
   import("./town3d.js").then(m => {
     townMod = m;
+    FLOORS = m.FLOORS; FLOOR_COLORS = Object.fromEntries(FLOORS.map(f => [f.id, f.color]));
     try {
       $("scene").classList.add("is3d");
       town = m.townViewer($("scene"), { onTap: tapTile });
@@ -1490,7 +1555,8 @@
   });
   async function openVisit(nickname) {
     if (!sb) return;
-    const { data: v, error } = await sb.rpc("flex_visit", { p_nickname: nickname });
+    const [{ data: v, error }, { data: vFloor }] = await Promise.all([
+      sb.rpc("flex_visit", { p_nickname: nickname }), sb.rpc("flex_floor", { p_nickname: nickname })]);
     if (error || !v) { toast("동네를 불러오지 못했어요"); return; }
     $("vName").textContent = v.nickname + "님의 동네";
     $("vWorth").textContent = v.worth != null ? "총 재산 " + wonShort(v.worth) + "원" : "";
@@ -1514,7 +1580,7 @@
     if (!visitView) visitView = townMod.townViewer($("vStage"));
     const [h] = nowHM();
     visitView.setNight(h >= 19 || h < 6);
-    visitView.update({ place: v.place || {}, avatar: v.avatar || {}, banner: v.banner, bubble: v.bubble, showTent: !(v.items || []).some(id => ITEM_BY_ID[id]?.cat === "house") });
+    visitView.update({ place: v.place || {}, avatar: v.avatar || {}, floor: vFloor || {}, banner: v.banner, bubble: v.bubble, showTent: !(v.items || []).some(id => ITEM_BY_ID[id]?.cat === "house") });
     if (online) loadDaily(true);
     visitView.start();
   }
@@ -1711,14 +1777,16 @@
     if (id === userId) return;   // getSession and INITIAL_SESSION report the same session
     userId = id;
     if (!id) {
-      online = false; state = load(); selectedItem = null;
+      online = false; state = load(); selectedItem = null; paintWith = null; paintPending = {};
       renderAccount(); renderAll();
       return;
     }
     $("auth").classList.remove("on");
     const { data, error } = await sb.rpc("flex_state");
     if (error || userId !== id) { if (error) toast("계정 정보를 불러오지 못했어요: " + error.message); return; }
-    online = true; state = fromServer(data); selectedItem = null;
+    online = true; state = fromServer(data); selectedItem = null; paintWith = null; paintPending = {};
+    await loadFloor();
+    if (userId !== id) return;
     renderAccount(); renderAll();
   }
 
