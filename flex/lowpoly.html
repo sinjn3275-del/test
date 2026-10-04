@@ -33,11 +33,11 @@
 <script type="module">
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { carModel } from "./models3d.js";
 
 // ---------- Data: same save as the main game ----------
 const N = 7, ROAD_I = 3, RIVER_J = N - 1;
 const terrain = (i, j) => j === RIVER_J ? "water" : i === ROAD_I ? "road" : "land";
-const CAR_COLORS = { "car-mini": "#7fd1ae", "car-sedan": "#c9d3e0", "car-suv": "#3a4a55", "car-sports": "#e63946", "car-super": "#ffb703", "car-hyper": "#2b2f38" };
 // Shown when this browser has no save yet, so the preview isn't empty.
 const DEMO = { "house-apt": "1,1", "house-penthouse": "5,1", "house-mansion": "0,4", "car-super": "2,4", "car-sports": "4,3", "car-hyper": "4,5", "sp-heli": "6,4", "sp-jet": "5,0", "sp-yacht": "1,6" };
 let place = null;
@@ -185,19 +185,11 @@ function building(id) {
       g.userData.bob = true; break;
     }
     default: {
-      if (!CAR_COLORS[id]) return null;
-      const c = CAR_COLORS[id], v = id.split("-")[1];
-      const low = ["sports", "super", "hyper"].includes(v), tall = v === "suv";
-      const L = v === "mini" ? 0.5 : 0.75, H = tall ? 0.22 : low ? 0.12 : 0.17;
-      g.add(box(0.36, H, L, c, 0, 0.07, 0, { metalness: 0.4, roughness: 0.4 }));
-      g.add(box(0.3, low ? 0.1 : 0.14, L * (low ? 0.4 : 0.55), "#1e2b3d", 0, 0.07 + H, low ? -0.05 : -0.03, { metalness: 0.5, roughness: 0.2 }));
-      for (const [x, z] of [[-0.18, L * 0.3], [0.18, L * 0.3], [-0.18, -L * 0.3], [0.18, -L * 0.3]]) {
-        const w = mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.06, 8), "#15171c", x, 0.07, z);
-        w.rotation.z = Math.PI / 2; g.add(w);
-      }
-      if (v === "super" || v === "hyper") g.add(box(0.38, 0.03, 0.08, "#14161b", 0, 0.07 + H + 0.08, -L / 2 + 0.05));
-      if (v === "hyper") g.add(box(0.37, 0.025, L + 0.01, "#d4af37", 0, 0.07 + H * 0.6, 0, { metalness: 0.7, roughness: 0.3 }));
-      g.rotation.y = 0.4;
+      const car = carModel(id);
+      if (!car) return null;
+      car.scale.setScalar(0.8);
+      car.rotation.y = 0.4;
+      g.add(car);
     }
   }
   return g;
@@ -250,7 +242,7 @@ for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
 
 // A car driving up and down the road.
 const traffic = building("car-sedan");
-traffic.rotation.y = 0;
+traffic.children[0].rotation.y = 0;
 traffic.position.x = tileX(ROAD_I) - 0.2;
 traffic.position.y = 0.1;
 scene.add(traffic);

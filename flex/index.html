@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>플렉스시티</title>
 <meta name="description" content="사이버머니 100억으로 코인 투자하고, 번 돈으로 차·시계·집을 사는 2D 가상 세계">
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
 <style>
   :root {
     --bg: #0d1220;
@@ -101,6 +104,7 @@
   .item { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; display: flex; flex-direction: column; min-width: 0; }
   .item .art { background: radial-gradient(circle at 50% 40%, #26314f, #182038); border-radius: 10px; aspect-ratio: 4 / 3; display: grid; place-items: center; overflow: hidden; }
   .item .art svg { width: 88%; height: 88%; }
+  .item .art img { width: 100%; height: 100%; object-fit: contain; }
   .item .nm { font-weight: 700; font-size: 14px; margin-top: 8px; }
   .item .pr { font-size: 13px; color: var(--gold); margin-top: 2px; font-weight: 600; }
   .item .need { font-size: 11.5px; color: var(--muted); margin-top: 3px; min-height: 16px; }
@@ -848,6 +852,16 @@
          <div class="bar"><i style="width:100%"></i></div>`;
   }
 
+  // 3D cars (models3d.js). Until it loads, or if it can't, the SVG art is shown.
+  let car3d = null;
+  import("./models3d.js").then(m => { car3d = m; if ($("view-shop").classList.contains("on")) renderShop(); }).catch(() => {});
+  function shopArt(item, night) {
+    if (car3d && item.cat === "car") {
+      try { const src = car3d.carThumb(item.id); if (src) return `<img src="${src}" alt="">`; } catch (e) { car3d = null; }
+    }
+    return itemSVG(item, night);
+  }
+
   let shopCat = "car";
   function renderShop() {
     $("cats").innerHTML = CATS.map(c => `<button data-cat="${c.id}" class="${c.id === shopCat ? "on" : ""}">${c.name}</button>`).join("");
@@ -856,7 +870,7 @@
     $("shopGrid").innerHTML = ITEMS.filter(i => i.cat === shopCat).map(i => {
       const own = owns(i.id), short = i.price - state.cash;
       return `<div class="item">
-        <div class="art">${itemSVG(i, night)}</div>
+        <div class="art">${shopArt(i, night)}</div>
         <div class="nm">${esc(i.name)}${own ? '<span class="owned-tag">보유</span>' : ""}</div>
         <div class="pr">${won(i.price)}</div>
         <div class="need">${own ? `되팔면 ${wonShort(Math.floor(i.price * RESALE))}원` : short > 0 ? `${wonShort(short)}원 부족` : ""}</div>
@@ -903,8 +917,11 @@
     const t = $("toast"); t.textContent = msg; t.classList.add("on");
     clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("on"), 2200);
   }
+  let stopSpin = () => {};
   function celebrate(item) {
     $("cArt").innerHTML = itemSVG(item);
+    stopSpin();
+    if (car3d && item.cat === "car") try { stopSpin = car3d.carSpin($("cArt"), item.id); } catch (e) { /* keep SVG */ }
     $("cTitle").textContent = item.name + " 구매 완료!";
     $("cText").textContent = won(item.price) + (placeable(item) ? " · 내 동네에 바로 나타나요" : " · 내 캐릭터가 차고 있어요");
     $("celebrate").classList.add("on");
@@ -922,7 +939,7 @@
   }
   $("scene").addEventListener("click", onSceneClick);
   $("moveBar").addEventListener("click", e => { if (e.target.id === "moveCancel") { selectedItem = null; renderWorld(); } });
-  $("cClose").addEventListener("click", () => { $("celebrate").classList.remove("on"); showView("world"); });
+  $("cClose").addEventListener("click", () => { stopSpin(); stopSpin = () => {}; $("celebrate").classList.remove("on"); showView("world"); });
 
   // ---------- Shop actions ----------
   $("cats").addEventListener("click", e => { const b = e.target.closest("[data-cat]"); if (b) { shopCat = b.dataset.cat; renderShop(); } });
