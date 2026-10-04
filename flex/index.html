@@ -1168,10 +1168,12 @@
   // Hover preview of the piece picked in the editor (PC only; see town.setGhost).
   let ghostFor = null;
   function syncGhost() {
-    const want = edit && edit.tab !== "floor" && edit.pick && decor3d ? edit.pick : null;
+    const want = !edit ? null : edit.tab === "floor" ? "floor:" + edit.mat : edit.pick && decor3d ? edit.pick : null;
     if (want === ghostFor) return;
     ghostFor = want;
-    town.setGhost(want ? decor3d.decorModel(want, { avatar: state.avatar || {} }) : null,
+    if (!want) { town.setGhost(null); return; }
+    if (edit.tab === "floor") { town.setGhost(townMod.floorTile(edit.mat), k => terrain(...parseKey(k)) === "land", { flat: true }); return; }
+    town.setGhost(decor3d.decorModel(want, { avatar: state.avatar || {} }),
       k => { const [i, j] = parseKey(k); return terrain(i, j) === "land" && !itemAt(k) && k !== avatarPos() && !decorAt(k, edit.decor); });
   }
   function openEdit(tab = "floor", pick = null) {

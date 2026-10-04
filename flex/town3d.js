@@ -68,6 +68,13 @@ function floorMat(id) {
   return floorMats[id] = new THREE.MeshStandardMaterial({ map: t, flatShading: true, roughness: 0.9, ...extra });
 }
 
+// A thin slab of a floor material, for the hover preview while paving.
+export function floorTile(id) {
+  const g = new THREE.Group();
+  g.add(box(0.98, 0.04, 0.98, floorMat(id), 0, 0.005, 0));
+  return g;
+}
+
 // ---------- Items ----------
 function tent() {
   const g = new THREE.Group();
@@ -289,14 +296,16 @@ export function townViewer(el, { onTap } = {}) {
 
   // Hover preview (PC): a see-through copy of what's about to be placed follows the mouse,
   // with a green/red square for whether that tile can take it. check(key) → boolean.
-  let ghost = null, ghostCheck = null, ghostMark = null;
-  function setGhost(model, check) {
+  // flat: a floor slab — only the red "can't" marker is shown, so the material stays visible.
+  let ghost = null, ghostCheck = null, ghostMark = null, ghostFlat = false;
+  function setGhost(model, check, { flat = false } = {}) {
+    ghostFlat = flat;
     if (ghost) scene.remove(ghost);
     if (ghostMark) scene.remove(ghostMark);
     ghost = ghostMark = null; ghostCheck = check;
     if (!model) return;
     model.traverse(o => {
-      if (o.isMesh) { o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.5; o.material.depthWrite = false; o.castShadow = false; }
+      if (o.isMesh) { o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = flat ? 0.9 : 0.5; o.material.depthWrite = false; o.castShadow = false; }
       o.raycast = () => {};
     });
     ghost = model; ghost.visible = false;
@@ -315,7 +324,9 @@ export function townViewer(el, { onTap } = {}) {
     const key = hit.object.userData.key, [i, j] = key.split(",").map(Number);
     ghost.position.set(tileX(i), 0.1, tileZ(j));
     ghostMark.position.set(tileX(i), 0.12, tileZ(j));
-    ghostMark.material.color.set(ghostCheck && !ghostCheck(key) ? 0xff4d4f : 0x52c41a);
+    const bad = ghostCheck && !ghostCheck(key);
+    ghostMark.material.color.set(bad ? 0xff4d4f : 0x52c41a);
+    if (ghostFlat) { ghostMark.visible = bad; ghost.visible = !bad; ghost.position.y = 0.11; }
   });
   renderer.domElement.addEventListener("pointerleave", () => { if (ghost) ghost.visible = ghostMark.visible = false; });
 
