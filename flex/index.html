@@ -187,6 +187,9 @@
   .auth .tabs2 button { border: 1px solid var(--line); background: var(--panel-2); color: var(--muted); border-radius: 10px; padding: 8px; font-weight: 700; }
   .auth .tabs2 button.on { background: var(--gold); color: var(--gold-ink); border-color: var(--gold); }
   .auth input { width: 100%; background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 10px; padding: 11px 12px; font-size: 15px; }
+  .auth .agree { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+  .auth .agree input { width: auto; margin-top: 2px; }
+  .auth .agree a, footer a { color: var(--gold); }
   .auth .msg { font-size: 12.5px; color: var(--up); min-height: 16px; }
   .auth .msg.ok { color: var(--ok); }
   .auth .close { background: none; border: 0; color: var(--muted); font-size: 13px; padding: 4px; }
@@ -284,7 +287,8 @@
 
   <footer>
     플렉스시티의 돈과 물건은 모두 가상이며 현금으로 바꿀 수 없어요.<br>
-    코인 시세: 업비트 공개 API · 투자 권유가 아닙니다.
+    코인 시세: 업비트 공개 API · 투자 권유가 아닙니다.<br>
+    <a href="../legal.html#terms">이용약관</a> · <a href="../legal.html#privacy"><b>개인정보처리방침</b></a>
   </footer>
 </main>
 
@@ -341,6 +345,7 @@
     <input id="aEmail" type="email" placeholder="이메일" autocomplete="email" required>
     <input id="aPass" type="password" placeholder="비밀번호 (6자 이상)" autocomplete="current-password" required minlength="6">
     <input id="aNick" type="text" placeholder="닉네임 (2~12자)" maxlength="12" hidden>
+    <label id="aAgreeRow" class="agree" hidden><input type="checkbox" id="aAgree"> <span>만 14세 이상이며 <a href="../legal.html#terms" target="_blank">이용약관</a>과 <a href="../legal.html#privacy" target="_blank">개인정보처리방침</a>에 동의해요</span></label>
     <div class="msg" id="aMsg"></div>
     <button class="btn" id="aSubmit" type="submit">로그인</button>
     <div class="hint" style="font-size:12px;color:var(--muted)">입고수 계정으로도 로그인할 수 있어요.</div>
@@ -1340,6 +1345,7 @@
     for (const b of $("authTabs").children) b.classList.toggle("on", b.dataset.mode === mode);
     $("aNick").hidden = mode !== "signup";
     $("aNick").required = mode === "signup";
+    $("aAgreeRow").hidden = mode !== "signup";
     $("aPass").autocomplete = mode === "signup" ? "new-password" : "current-password";
     $("aSubmit").textContent = mode === "signup" ? "가입하고 10억 받기" : "로그인";
     setAuthMsg("");
@@ -1371,6 +1377,7 @@
       if (authMode === "signup") {
         const nickname = $("aNick").value.trim();
         if (nickname.length < 2 || nickname.length > 12) { setAuthMsg("닉네임은 2~12자로 입력해 주세요."); return; }
+        if (!$("aAgree").checked) { setAuthMsg("약관과 개인정보처리방침에 동의해 주세요."); return; }
         const { data: available, error: nickErr } = await sb.rpc("nickname_available", { p_nickname: nickname });
         if (nickErr) throw nickErr;
         if (!available) { setAuthMsg("이미 사용 중인 닉네임이에요. 다른 닉네임을 입력해 주세요."); return; }
