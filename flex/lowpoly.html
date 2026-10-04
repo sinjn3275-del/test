@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>플렉스시티 3D 미리보기</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #6cc3f5; font-family: -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; }
+  canvas { display: block; touch-action: none; }
+  #hud { position: fixed; top: 12px; left: 12px; right: 12px; display: flex; gap: 8px; align-items: center; pointer-events: none; }
+  #hud > * { pointer-events: auto; }
+  .chip { background: rgba(255,255,255,.88); border-radius: 999px; padding: 8px 14px; font-size: 14px; font-weight: 700; color: #1d2433; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+  a.chip { text-decoration: none; }
+  button.chip { border: 0; cursor: pointer; }
+  #tip { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); font-size: 13px; font-weight: 600; white-space: nowrap; }
+  #err { position: fixed; inset: 0; display: none; place-items: center; text-align: center; padding: 24px; color: #1d2433; font-weight: 700; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="hud">
+  <a class="chip" href="./">← 게임으로</a>
+  <span class="chip" id="label">내 세상 3D</span>
+  <button class="chip" id="dayBtn">☀️ 낮</button>
+</div>
+<div class="chip" id="tip">드래그: 돌리기 · 두 손가락/휠: 확대</div>
+<div id="err">3D를 불러오지 못했어요.<br>인터넷 연결을 확인해 주세요.</div>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+// ---------- Data: same save as the main game ----------
+const N = 7, ROAD_I = 3, RIVER_J = N - 1;
+const terrain = (i, j) => j === RIVER_J ? "water" : i === ROAD_I ? "road" : "land";
+const CAR_COLORS = { "car-mini": "#7fd1ae", "car-sedan": "#c9d3e0", "car-suv": "#3a4a55", "car-sports": "#e63946", "car-super": "#ffb703", "car-hyper": "#2b2f38" };
+// Shown when this browser has no save yet, so the preview isn't empty.
+const DEMO = { "house-apt": "1,1", "house-penthouse": "5,1", "house-mansion": "0,4", "car-super": "2,4", "car-sports": "4,3", "car-hyper": "4,5", "sp-heli": "6,4", "sp-jet": "5,0", "sp-yacht": "1,6" };
+let place = null;
+try {
+  const s = JSON.parse(localStorage.getItem("flexcity.v1"));
+  if (s && s.place && Object.keys(s.place).length) place = s.place;
+} catch (e) { /* no save */ }
+const demo = !place;
+if (demo) place = DEMO;
+document.getElementById("label").textContent = demo ? "3D 미리보기 (예시 동네)" : "내 세상 3D";
+
+// ---------- Scene ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.1, 200);
+// Back the camera off on narrow (phone) screens so the whole island fits.
+const fitCamera = () => {
+  const d = 15 * Math.max(1, 1.15 / camera.aspect);
+  camera.position.setLength(d);
+};
+camera.position.set(1, 0.85, 1);
+fitCamera();
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0, 0);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI * 0.45;
+controls.minDistance = 5;
+controls.maxDistance = 40;
+controls.enablePan = false;
+
+const hemi = new THREE.HemisphereLight(0xffffff, 0x6b8f71, 0.9);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+sun.position.set(8, 14, 5);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -8, right: 8, top: 8, bottom: -8 });
+scene.add(sun);
+
+// ---------- Low-poly helpers ----------
+const mats = {};
+const mat = (c, extra = {}) => {
+  const k = c + JSON.stringify(extra);
+  return mats[k] || (mats[k] = new THREE.MeshStandardMaterial({ color: c, flatShading: true, roughness: 0.85, ...extra }));
+};
+function mesh(geo, color, x = 0, y = 0, z = 0, extra) {
+  const m = new THREE.Mesh(geo, typeof color === "string" ? mat(color, extra) : color);
+  m.position.set(x, y, z);
+  m.castShadow = m.receiveShadow = true;
+  return m;
+}
+const box = (w, h, d, c, x, y, z, extra) => mesh(new THREE.BoxGeometry(w, h, d), c, x, y + h / 2, z, extra);
+const tileX = i => i - (N - 1) / 2, tileZ = j => j - (N - 1) / 2;
+const windowMat = mat("#a8dadc", { emissive: "#000000" });
+const lights = [];   // windows/lamps that glow at night
+
+function windows(g, w, h, d, floors, y0 = 0) {
+  for (let f = 0; f < floors; f++) {
+    const y = y0 + (f + 0.5) * (h / floors);
+    for (const side of [1, -1]) {
+      const pane = mesh(new THREE.BoxGeometry(w * 0.8, h / floors * 0.45, 0.02), windowMat, 0, y, side * (d / 2 + 0.01));
+      pane.castShadow = false;
+      g.add(pane);
+      const pane2 = mesh(new THREE.BoxGeometry(0.02, h / floors * 0.45, d * 0.8), windowMat, side * (w / 2 + 0.01), y, 0);
+      pane2.castShadow = false;
+      g.add(pane2);
+    }
+  }
+}
+
+function tree(x, z, s = 1) {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.CylinderGeometry(0.05 * s, 0.07 * s, 0.3 * s, 5), "#6b4f3a", 0, 0.15 * s, 0));
+  g.add(mesh(new THREE.ConeGeometry(0.28 * s, 0.6 * s, 6), "#40916c", 0, 0.55 * s, 0));
+  g.add(mesh(new THREE.ConeGeometry(0.2 * s, 0.4 * s, 6), "#52b788", 0, 0.85 * s, 0));
+  g.position.set(x, 0.1, z);
+  return g;
+}
+
+// ---------- Items ----------
+function building(id) {
+  const g = new THREE.Group();
+  switch (id) {
+    case "house-oneroom":
+      g.add(box(0.6, 0.7, 0.6, "#e9d8a6")); windows(g, 0.6, 0.7, 0.6, 2);
+      g.add(box(0.66, 0.06, 0.66, "#9b2226", 0, 0.7, 0)); break;
+    case "house-villa":
+      g.add(box(0.8, 1.1, 0.7, "#f1faee")); windows(g, 0.8, 1.1, 0.7, 3);
+      g.add(box(0.86, 0.08, 0.76, "#457b9d", 0, 1.1, 0)); break;
+    case "house-apt":
+      g.add(box(0.75, 2.4, 0.75, "#dfe7ef")); windows(g, 0.75, 2.4, 0.75, 8);
+      g.add(box(0.8, 0.1, 0.8, "#1d3557", 0, 2.4, 0)); break;
+    case "house-penthouse":
+      g.add(box(0.8, 3.4, 0.8, "#2b2d42", 0, 0, 0, { metalness: 0.3 })); windows(g, 0.8, 3.4, 0.8, 11);
+      g.add(box(0.6, 0.35, 0.6, "#d4af37", 0, 3.4, 0, { metalness: 0.6, roughness: 0.4 }));
+      g.add(box(0.3, 0.04, 0.3, "#48cae4", 0.12, 3.75, 0.12)); break;   // rooftop pool
+    case "house-mansion": {
+      g.add(box(0.95, 0.04, 0.95, "#74c69d"));                         // lawn
+      g.add(box(0.75, 0.6, 0.5, "#fefae0", 0, 0.04, -0.1)); windows(g, 0.75, 0.6, 0.5, 2, 0.04);
+      const roof = mesh(new THREE.ConeGeometry(0.58, 0.35, 4), "#bc6c25", 0, 0.82, -0.1);
+      roof.rotation.y = Math.PI / 4; roof.scale.z = 0.7; g.add(roof);
+      g.add(box(0.3, 0.02, 0.18, "#48cae4", 0.22, 0.04, 0.32));         // pool
+      for (const x of [-0.3, 0.3]) g.add(box(0.06, 0.45, 0.06, "#fefae0", x, 0.04, 0.17)); break;
+    }
+    case "house-castle":
+      g.add(box(0.7, 0.8, 0.7, "#adb5bd")); windows(g, 0.7, 0.8, 0.7, 2);
+      for (const [x, z] of [[-0.35, -0.35], [0.35, -0.35], [-0.35, 0.35], [0.35, 0.35]]) {
+        g.add(mesh(new THREE.CylinderGeometry(0.13, 0.13, 1.2, 6), "#ced4da", x, 0.6, z));
+        g.add(mesh(new THREE.ConeGeometry(0.17, 0.35, 6), "#9b2226", x, 1.37, z));
+      } break;
+    case "sp-heli": {
+      g.add(box(0.85, 0.03, 0.85, "#495057"));                          // pad
+      g.add(mesh(new THREE.TorusGeometry(0.25, 0.02, 4, 16), "#f8f9fa", 0, 0.04, 0)).rotation.x = Math.PI / 2;
+      const body = mesh(new THREE.SphereGeometry(0.2, 7, 5), "#e63946", 0, 0.28, 0);
+      body.scale.set(1.4, 0.9, 0.9); g.add(body);
+      g.add(box(0.45, 0.05, 0.05, "#e63946", -0.35, 0.25, 0));
+      const rotor = new THREE.Group(); rotor.position.y = 0.48;
+      rotor.add(box(1.0, 0.015, 0.05, "#22252b")); rotor.add(box(0.05, 0.015, 1.0, "#22252b"));
+      g.add(rotor); g.userData.spin = rotor;
+      for (const z of [-0.14, 0.14]) g.add(box(0.5, 0.02, 0.03, "#22252b", 0, 0.08, z)); break;
+    }
+    case "sp-jet": {
+      const body = mesh(new THREE.CylinderGeometry(0.11, 0.11, 1.1, 8), "#f8f9fb", 0, 0.3, 0);
+      body.rotation.x = Math.PI / 2; g.add(body);
+      const nose = mesh(new THREE.ConeGeometry(0.11, 0.25, 8), "#f8f9fb", 0, 0.3, 0.67);
+      nose.rotation.x = Math.PI / 2; g.add(nose);
+      g.add(box(1.1, 0.03, 0.25, "#9aa5b4", 0, 0.27, 0));               // wings
+      g.add(box(0.03, 0.3, 0.18, "#1d3557", 0, 0.38, -0.48));           // tail
+      g.add(box(0.4, 0.03, 0.12, "#9aa5b4", 0, 0.5, -0.5));
+      g.add(box(0.23, 0.03, 1.12, "#d4af37", 0, 0.24, 0, { metalness: 0.6, roughness: 0.4 }));
+      for (const z of [0.3, -0.25]) g.add(mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.2, 5), "#22252b", 0, 0.1, z)); break;
+    }
+    case "sp-yacht": {
+      const hull = mesh(new THREE.CylinderGeometry(0.22, 0.1, 0.18, 6), "#f8f9fb", 0, 0.12, 0);
+      hull.scale.set(1, 1, 3.2); g.add(hull);
+      g.add(box(0.28, 0.16, 0.55, "#f8f9fb", 0, 0.21, -0.05));
+      g.add(box(0.29, 0.06, 0.4, "#1d3557", 0, 0.29, -0.03));
+      g.add(box(0.2, 0.12, 0.25, "#f8f9fb", 0, 0.37, -0.1));
+      g.userData.bob = true; break;
+    }
+    default: {
+      if (!CAR_COLORS[id]) return null;
+      const c = CAR_COLORS[id], v = id.split("-")[1];
+      const low = ["sports", "super", "hyper"].includes(v), tall = v === "suv";
+      const L = v === "mini" ? 0.5 : 0.75, H = tall ? 0.22 : low ? 0.12 : 0.17;
+      g.add(box(0.36, H, L, c, 0, 0.07, 0, { metalness: 0.4, roughness: 0.4 }));
+      g.add(box(0.3, low ? 0.1 : 0.14, L * (low ? 0.4 : 0.55), "#1e2b3d", 0, 0.07 + H, low ? -0.05 : -0.03, { metalness: 0.5, roughness: 0.2 }));
+      for (const [x, z] of [[-0.18, L * 0.3], [0.18, L * 0.3], [-0.18, -L * 0.3], [0.18, -L * 0.3]]) {
+        const w = mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.06, 8), "#15171c", x, 0.07, z);
+        w.rotation.z = Math.PI / 2; g.add(w);
+      }
+      if (v === "super" || v === "hyper") g.add(box(0.38, 0.03, 0.08, "#14161b", 0, 0.07 + H + 0.08, -L / 2 + 0.05));
+      if (v === "hyper") g.add(box(0.37, 0.025, L + 0.01, "#d4af37", 0, 0.07 + H * 0.6, 0, { metalness: 0.7, roughness: 0.3 }));
+      g.rotation.y = 0.4;
+    }
+  }
+  return g;
+}
+
+// ---------- Ground ----------
+const ground = new THREE.Group();
+scene.add(ground);
+ground.add(box(N + 0.6, 0.6, N + 0.6, "#7f5539", 0, -0.6, 0));              // island base
+const waters = [];
+for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+  const t = terrain(i, j), x = tileX(i), z = tileZ(j);
+  if (t === "water") {
+    const w = box(1, 0.06, 1, "#48cae4", x, -0.02, z, { transparent: true, opacity: 0.9, roughness: 0.2, metalness: 0.1 });
+    waters.push(w); ground.add(w);
+  } else if (t === "road") {
+    ground.add(box(1, 0.1, 1, "#495057", x, 0, z));
+    ground.add(box(0.06, 0.005, 0.4, "#f8f9fa", x, 0.1, z));
+  } else {
+    ground.add(box(0.98, 0.1, 0.98, (i + j) % 2 ? "#74c69d" : "#6ab88f", x, 0, z));
+  }
+}
+// Street lamps along the road.
+for (const j of [0, 2, 4]) {
+  const x = tileX(ROAD_I) + 0.45, z = tileZ(j);
+  ground.add(mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.6, 5), "#343a40", x, 0.4, z));
+  const bulb = mesh(new THREE.SphereGeometry(0.05, 6, 4), "#fff3b0", x, 0.72, z, { emissive: "#000000" });
+  ground.add(bulb); lights.push(bulb);
+}
+
+// ---------- Place items ----------
+const taken = new Set();
+const animated = [];
+for (const [id, key] of Object.entries(place)) {
+  const [i, j] = key.split(",").map(Number);
+  if (!(i >= 0 && i < N && j >= 0 && j < N)) continue;
+  const g = building(id);
+  if (!g) continue;
+  g.position.set(tileX(i), terrain(i, j) === "water" ? 0 : 0.1, tileZ(j));
+  scene.add(g);
+  taken.add(key);
+  if (g.userData.spin || g.userData.bob) animated.push(g);
+}
+// Fill empty land with trees so the town doesn't look bare.
+for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+  if (terrain(i, j) !== "land" || taken.has(i + "," + j) || (i * 7 + j * 3) % 3) continue;
+  scene.add(tree(tileX(i) - 0.2, tileZ(j) - 0.15, 0.9));
+  scene.add(tree(tileX(i) + 0.25, tileZ(j) + 0.2, 0.7));
+}
+
+// A car driving up and down the road.
+const traffic = building("car-sedan");
+traffic.rotation.y = 0;
+traffic.position.x = tileX(ROAD_I) - 0.2;
+traffic.position.y = 0.1;
+scene.add(traffic);
+
+// ---------- Clouds ----------
+const clouds = [];
+for (let k = 0; k < 4; k++) {
+  const c = new THREE.Group();
+  for (let p = 0; p < 3; p++) c.add(mesh(new THREE.IcosahedronGeometry(0.35 + p * 0.08, 0), "#ffffff", p * 0.4 - 0.4, 0, (p % 2) * 0.2));
+  c.children.forEach(m => m.castShadow = false);
+  c.position.set(-10 + k * 5, 7 + (k % 2), -9 + (k % 2) * 3);
+  scene.add(c); clouds.push(c);
+}
+
+// ---------- Day / night ----------
+const h = new Date().getHours();
+let night = h >= 19 || h < 6;
+function applyTime() {
+  const sky = night ? "#0b1430" : "#6cc3f5";
+  scene.background = new THREE.Color(sky);
+  scene.fog = new THREE.Fog(sky, 25, 60);
+  document.body.style.background = sky;
+  sun.intensity = night ? 0.25 : 1.6;
+  sun.color.set(night ? "#9db4ff" : "#ffffff");
+  hemi.intensity = night ? 0.35 : 0.9;
+  const glow = night ? "#ffd166" : "#000000";
+  windowMat.emissive.set(glow);
+  windowMat.color.set(night ? "#ffd166" : "#a8dadc");
+  for (const l of lights) l.material.emissive.set(night ? "#fff3b0" : "#000000");
+  document.getElementById("dayBtn").textContent = night ? "🌙 밤" : "☀️ 낮";
+}
+document.getElementById("dayBtn").addEventListener("click", () => { night = !night; applyTime(); });
+applyTime();
+
+// ---------- Loop ----------
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const t = clock.getElapsedTime();
+  for (const g of animated) {
+    if (g.userData.spin) g.userData.spin.rotation.y = t * 12;
+    if (g.userData.bob) { g.position.y = Math.sin(t * 1.5) * 0.03; g.rotation.z = Math.sin(t * 1.1) * 0.04; }
+  }
+  waters.forEach((w, k) => w.position.y = -0.02 + Math.sin(t * 1.2 + k) * 0.015 + 0.03);
+  traffic.position.z = tileZ(0) + ((t * 0.8) % (N - 1));
+  clouds.forEach((c, k) => { c.position.x += 0.004; if (c.position.x > 10) c.position.x = -10; });
+  controls.update();
+  renderer.render(scene, camera);
+});
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  fitCamera();
+  renderer.setSize(innerWidth, innerHeight);
+});
+window.__ready = true;
+</script>
+<script>
+  // If the 3D library can't load (offline / blocked CDN), say so instead of a blank screen.
+  setTimeout(() => { if (!window.__ready) document.getElementById("err").style.display = "grid"; }, 8000);
+</script>
+</body>
+</html>
