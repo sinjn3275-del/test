@@ -283,6 +283,7 @@
     <div class="card" id="history"></div>
     <button class="danger" id="resetBtn">처음부터 다시 시작 (100억으로 초기화)</button>
     <button class="danger" id="logoutBtn" hidden>로그아웃</button>
+    <button class="danger" id="deleteBtn" hidden style="border:0;margin-top:6px;font-size:12px;text-decoration:underline">회원 탈퇴</button>
   </section>
 
   <footer>
@@ -1368,6 +1369,15 @@
   $("guestLogin").addEventListener("click", () => openAuth("signup"));
   $("acctBtn").addEventListener("click", () => online ? showView("wallet") : openAuth("login"));
   $("logoutBtn").addEventListener("click", () => sb?.auth.signOut());
+  $("deleteBtn").addEventListener("click", async () => {
+    const typed = prompt("탈퇴하면 계정과 기록이 모두 바로 삭제되고 되돌릴 수 없어요.\n같은 계정을 쓰는 입고수 기록도 함께 삭제돼요.\n\n정말 탈퇴하려면 '탈퇴'라고 입력해 주세요.");
+    if (typed === null) return;
+    if (typed.trim() !== "탈퇴") { toast("'탈퇴'라고 정확히 입력해 주세요"); return; }
+    const { error } = await sb.rpc("delete_my_account");
+    if (error) { toast("탈퇴하지 못했어요: " + error.message); return; }
+    await sb.auth.signOut().catch(() => {});
+    toast("탈퇴가 완료됐어요. 그동안 이용해 주셔서 감사해요.");
+  });
   $("authForm").addEventListener("submit", async e => {
     e.preventDefault();
     if (!sb) { setAuthMsg("서버에 연결할 수 없어요. 인터넷 연결을 확인하고 새로고침해 주세요."); return; }
@@ -1399,6 +1409,7 @@
     $("acctBtn").textContent = online ? (state.nickname || "내 계정") : "로그인";
     $("guestBar").classList.toggle("on", !online);
     $("logoutBtn").hidden = !online;
+    $("deleteBtn").hidden = !online;
     $("resetBtn").textContent = online ? "처음부터 다시 시작 (10억으로 초기화)" : "처음부터 다시 시작 (100억으로 초기화)";
   }
   async function onSession(session) {
