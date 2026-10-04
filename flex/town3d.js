@@ -2,7 +2,7 @@
 // tap-to-select/move via raycasting, day/night.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { carModel } from "./models3d.js";
+import { carModel, itemModel, windowMat } from "./models3d.js";
 import { avatarModel } from "./avatar3d.js";
 
 export const N = 7, ROAD_I = 3, RIVER_J = N - 1;
@@ -22,22 +22,7 @@ function mesh(geo, color, x = 0, y = 0, z = 0, extra) {
 }
 const box = (w, h, d, c, x, y, z, extra) => mesh(new THREE.BoxGeometry(w, h, d), c, x, y + h / 2, z, extra);
 const tileX = i => i - (N - 1) / 2, tileZ = j => j - (N - 1) / 2;
-const windowMat = mat("#a8dadc", { emissive: "#000000" });
 const lampMat = mat("#fff3b0", { emissive: "#000000" });
-
-function windows(g, w, h, d, floors, y0 = 0) {
-  for (let f = 0; f < floors; f++) {
-    const y = y0 + (f + 0.5) * (h / floors);
-    for (const side of [1, -1]) {
-      const pane = mesh(new THREE.BoxGeometry(w * 0.8, h / floors * 0.45, 0.02), windowMat, 0, y, side * (d / 2 + 0.01));
-      pane.castShadow = false;
-      g.add(pane);
-      const pane2 = mesh(new THREE.BoxGeometry(0.02, h / floors * 0.45, d * 0.8), windowMat, side * (w / 2 + 0.01), y, 0);
-      pane2.castShadow = false;
-      g.add(pane2);
-    }
-  }
-}
 
 function tree(x, z, s = 1) {
   const g = new THREE.Group();
@@ -49,82 +34,21 @@ function tree(x, z, s = 1) {
 }
 
 // ---------- Items ----------
-function building(id) {
-  const g = new THREE.Group();
-  switch (id) {
-    case "house-oneroom":
-      g.add(box(0.6, 0.7, 0.6, "#e9d8a6")); windows(g, 0.6, 0.7, 0.6, 2);
-      g.add(box(0.66, 0.06, 0.66, "#9b2226", 0, 0.7, 0)); break;
-    case "house-villa":
-      g.add(box(0.8, 1.1, 0.7, "#f1faee")); windows(g, 0.8, 1.1, 0.7, 3);
-      g.add(box(0.86, 0.08, 0.76, "#457b9d", 0, 1.1, 0)); break;
-    case "house-apt":
-      g.add(box(0.75, 2.4, 0.75, "#dfe7ef")); windows(g, 0.75, 2.4, 0.75, 8);
-      g.add(box(0.8, 0.1, 0.8, "#1d3557", 0, 2.4, 0)); break;
-    case "house-penthouse":
-      g.add(box(0.8, 3.4, 0.8, "#2b2d42", 0, 0, 0, { metalness: 0.3 })); windows(g, 0.8, 3.4, 0.8, 11);
-      g.add(box(0.6, 0.35, 0.6, "#d4af37", 0, 3.4, 0, { metalness: 0.3, roughness: 0.4 }));
-      g.add(box(0.3, 0.04, 0.3, "#48cae4", 0.12, 3.75, 0.12)); break;   // rooftop pool
-    case "house-mansion": {
-      g.add(box(0.95, 0.04, 0.95, "#74c69d"));                         // lawn
-      g.add(box(0.75, 0.6, 0.5, "#fefae0", 0, 0.04, -0.1)); windows(g, 0.75, 0.6, 0.5, 2, 0.04);
-      const roof = mesh(new THREE.ConeGeometry(0.58, 0.35, 4), "#bc6c25", 0, 0.82, -0.1);
-      roof.rotation.y = Math.PI / 4; roof.scale.z = 0.7; g.add(roof);
-      g.add(box(0.3, 0.02, 0.18, "#48cae4", 0.22, 0.04, 0.32));         // pool
-      for (const x of [-0.3, 0.3]) g.add(box(0.06, 0.45, 0.06, "#fefae0", x, 0.04, 0.17)); break;
-    }
-    case "house-castle":
-      g.add(box(0.7, 0.8, 0.7, "#adb5bd")); windows(g, 0.7, 0.8, 0.7, 2);
-      for (const [x, z] of [[-0.35, -0.35], [0.35, -0.35], [-0.35, 0.35], [0.35, 0.35]]) {
-        g.add(mesh(new THREE.CylinderGeometry(0.13, 0.13, 1.2, 6), "#ced4da", x, 0.6, z));
-        g.add(mesh(new THREE.ConeGeometry(0.17, 0.35, 6), "#9b2226", x, 1.37, z));
-      } break;
-    case "sp-heli": {
-      g.add(box(0.85, 0.03, 0.85, "#495057"));                          // pad
-      g.add(mesh(new THREE.TorusGeometry(0.25, 0.02, 4, 16), "#f8f9fa", 0, 0.04, 0)).rotation.x = Math.PI / 2;
-      const body = mesh(new THREE.SphereGeometry(0.2, 7, 5), "#e63946", 0, 0.28, 0);
-      body.scale.set(1.4, 0.9, 0.9); g.add(body);
-      g.add(box(0.45, 0.05, 0.05, "#e63946", -0.35, 0.25, 0));
-      const rotor = new THREE.Group(); rotor.position.y = 0.48;
-      rotor.add(box(1.0, 0.015, 0.05, "#22252b")); rotor.add(box(0.05, 0.015, 1.0, "#22252b"));
-      g.add(rotor); g.userData.spin = rotor;
-      for (const z of [-0.14, 0.14]) g.add(box(0.5, 0.02, 0.03, "#22252b", 0, 0.08, z)); break;
-    }
-    case "sp-jet": {
-      const body = mesh(new THREE.CylinderGeometry(0.11, 0.11, 1.1, 8), "#f8f9fb", 0, 0.3, 0);
-      body.rotation.x = Math.PI / 2; g.add(body);
-      const nose = mesh(new THREE.ConeGeometry(0.11, 0.25, 8), "#f8f9fb", 0, 0.3, 0.67);
-      nose.rotation.x = Math.PI / 2; g.add(nose);
-      g.add(box(1.1, 0.03, 0.25, "#9aa5b4", 0, 0.27, 0));               // wings
-      g.add(box(0.03, 0.3, 0.18, "#1d3557", 0, 0.38, -0.48));           // tail
-      g.add(box(0.4, 0.03, 0.12, "#9aa5b4", 0, 0.5, -0.5));
-      g.add(box(0.23, 0.03, 1.12, "#d4af37", 0, 0.24, 0, { metalness: 0.3, roughness: 0.4 }));
-      for (const z of [0.3, -0.25]) g.add(mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.2, 5), "#22252b", 0, 0.1, z)); break;
-    }
-    case "sp-yacht": {
-      const hull = mesh(new THREE.CylinderGeometry(0.22, 0.1, 0.18, 6), "#f8f9fb", 0, 0.12, 0);
-      hull.scale.set(1, 1, 3.2); g.add(hull);
-      g.add(box(0.28, 0.16, 0.55, "#f8f9fb", 0, 0.21, -0.05));
-      g.add(box(0.29, 0.06, 0.4, "#1d3557", 0, 0.29, -0.03));
-      g.add(box(0.2, 0.12, 0.25, "#f8f9fb", 0, 0.37, -0.1));
-      g.userData.bob = true; break;
-    }
-    default: {
-      const car = carModel(id);
-      if (!car) return null;
-      car.scale.setScalar(0.8);
-      car.rotation.y = 0.4;
-      g.add(car);
-    }
-  }
-  return g;
-}
-
-
 function tent() {
   const g = new THREE.Group();
   const t = mesh(new THREE.ConeGeometry(0.42, 0.55, 4), "#e07a4a", 0, 0.28, 0);
   t.rotation.y = Math.PI / 4; g.add(t);
+  return g;
+}
+
+// Items as placed in the town: cars a bit smaller and angled.
+function townModel(id) {
+  const m = itemModel(id);
+  if (!m || !id.startsWith("car-")) return m;
+  const g = new THREE.Group();
+  m.scale.setScalar(0.8);
+  m.rotation.y = 0.4;
+  g.add(m);
   return g;
 }
 
@@ -210,13 +134,13 @@ export function townViewer(el, { onTap } = {}) {
     const taken = new Set(Object.values(place));
     for (const [id, key] of Object.entries(place)) {
       const [i, j] = key.split(",").map(Number);
-      const g = building(id);
+      const g = townModel(id);
       if (!g) continue;
       g.position.set(tileX(i), terrain(i, j) === "water" ? 0 : 0.1, tileZ(j));
       g.userData.base = g.position.y;
       g.traverse(o => { o.userData.key = key; });
       dyn.add(g); items.push(g);
-      if (g.userData.spin || g.userData.bob) animated.push(g);
+      if (g.userData.spin || g.userData.bob || g.userData.float) animated.push(g);
       if (id === selected) selGroup = g;
     }
     for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
@@ -285,6 +209,7 @@ export function townViewer(el, { onTap } = {}) {
     for (const g of animated) {
       if (g.userData.spin) g.userData.spin.rotation.y = t * 12;
       if (g.userData.bob) { g.position.y = Math.sin(t * 1.5) * 0.03; g.rotation.z = Math.sin(t * 1.1) * 0.04; }
+      if (g.userData.float) g.userData.float.position.y = 0.55 + Math.sin(t * 0.8) * 0.12;
     }
     if (selGroup) selGroup.position.y = selGroup.userData.base + 0.08 + Math.sin(t * 5) * 0.05;
     waters.forEach((w, k) => w.position.y = 0.01 + Math.sin(t * 1.2 + k) * 0.015);

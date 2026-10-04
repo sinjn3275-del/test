@@ -419,25 +419,38 @@
   const ITEMS = [
     { id: "car-mini", cat: "car", name: "귀요미 경차", price: 15_000_000, art: ["car", "mini", "#7fd1ae"] },
     { id: "car-sedan", cat: "car", name: "패밀리 세단", price: 45_000_000, art: ["car", "sedan", "#c9d3e0"] },
+    { id: "car-ev", cat: "car", name: "전기 GT 세단", price: 130_000_000, art: ["car", "sedan", "#eef1f5"] },
+    { id: "car-classic", cat: "car", name: "클래식 컨버터블", price: 180_000_000, art: ["car", "sports", "#2a9d8f"] },
     { id: "car-suv", cat: "car", name: "대형 SUV", price: 95_000_000, art: ["car", "suv", "#3a4a55"] },
     { id: "car-sports", cat: "car", name: "로드스터 스포츠카", price: 280_000_000, art: ["car", "sports", "#e63946"] },
     { id: "car-super", cat: "car", name: "V12 슈퍼카", price: 650_000_000, art: ["car", "super", "#ffb703"] },
+    { id: "car-limo", cat: "car", name: "스트레치 리무진", price: 900_000_000, art: ["car", "sedan", "#15171c"] },
+    { id: "car-offroad", cat: "car", name: "6륜 오프로더", price: 1_200_000_000, art: ["car", "suv", "#6b705c"] },
     { id: "car-hyper", cat: "car", name: "한정판 하이퍼카", price: 3_500_000_000, art: ["car", "hyper", "#2b2f38"] },
     { id: "watch-digital", cat: "watch", name: "전자시계", price: 300_000, art: ["watch", "digital"] },
     { id: "watch-classic", cat: "watch", name: "가죽 클래식", price: 6_000_000, art: ["watch", "classic"] },
     { id: "watch-diver", cat: "watch", name: "다이버 워치", price: 18_000_000, art: ["watch", "diver"] },
     { id: "watch-gold", cat: "watch", name: "골드 드레스워치", price: 80_000_000, art: ["watch", "gold"] },
+    { id: "watch-chrono", cat: "watch", name: "핑크골드 크로노그래프", price: 120_000_000, art: ["watch", "gold"] },
     { id: "watch-diamond", cat: "watch", name: "다이아 베젤", price: 500_000_000, art: ["watch", "diamond"] },
+    { id: "watch-skeleton", cat: "watch", name: "스켈레톤 투르비용", price: 1_200_000_000, art: ["watch", "grand"] },
     { id: "watch-grand", cat: "watch", name: "그랜드 컴플리케이션", price: 2_500_000_000, art: ["watch", "grand"] },
     { id: "house-oneroom", cat: "house", name: "역세권 원룸", price: 200_000_000, art: ["house", "oneroom"] },
     { id: "house-villa", cat: "house", name: "신축 빌라", price: 500_000_000, art: ["house", "villa"] },
     { id: "house-apt", cat: "house", name: "브랜드 아파트", price: 1_500_000_000, art: ["house", "apt"] },
+    { id: "house-hanok", cat: "house", name: "북촌 한옥", price: 3_000_000_000, art: ["house", "mansion"] },
+    { id: "house-poolvilla", cat: "house", name: "제주 풀빌라", price: 4_000_000_000, art: ["house", "mansion"] },
     { id: "house-penthouse", cat: "house", name: "한강뷰 펜트하우스", price: 8_000_000_000, art: ["house", "penthouse"] },
     { id: "house-mansion", cat: "house", name: "정원 딸린 대저택", price: 15_000_000_000, art: ["house", "mansion"] },
     { id: "house-castle", cat: "house", name: "프라이빗 섬의 성", price: 50_000_000_000, art: ["house", "castle"] },
+    { id: "house-tower", cat: "house", name: "랜드마크 타워", price: 200_000_000_000, art: ["house", "penthouse"] },
+    { id: "sp-balloon", cat: "special", name: "개인 열기구", price: 500_000_000, art: ["special", "heli"] },
     { id: "sp-yacht", cat: "special", name: "럭셔리 요트", price: 3_000_000_000, art: ["special", "yacht"] },
     { id: "sp-heli", cat: "special", name: "개인 헬기", price: 6_000_000_000, art: ["special", "heli"] },
+    { id: "sp-sub", cat: "special", name: "개인 잠수함", price: 15_000_000_000, art: ["special", "yacht"] },
+    { id: "sp-superyacht", cat: "special", name: "메가 슈퍼요트", price: 30_000_000_000, art: ["special", "yacht"] },
     { id: "sp-jet", cat: "special", name: "프라이빗 제트", price: 40_000_000_000, art: ["special", "jet"] },
+    { id: "sp-rocket", cat: "special", name: "개인 우주선", price: 500_000_000_000, art: ["special", "jet"] },
   ];
   const ITEM_BY_ID = Object.fromEntries(ITEMS.map(i => [i.id, i]));
 
@@ -753,7 +766,8 @@
   const tileKey = (i, j) => i + "," + j;
   const parseKey = k => k.split(",").map(Number);
   const placeable = item => item && item.cat !== "watch";
-  const needs = item => item.id === "sp-yacht" ? "water" : "land";
+  const WATER_ITEMS = ["sp-yacht", "sp-superyacht", "sp-sub"];
+  const needs = item => WATER_ITEMS.includes(item.id) ? "water" : "land";
   const AVATAR_TILE = [ROAD_I, 4];
 
   // Ground point for tile-local coords (a along i, b along j, both in tile units) at height z.
@@ -883,7 +897,7 @@
     const night = h >= 19 || h < 6, dusk = h >= 17 && h < 19;
     const sky = night ? ["#0b1430", "#26355e"] : dusk ? ["#ff9e6d", "#ffd8a8"] : ["#6cc3f5", "#d8f0ff"];
     const watch = bestOwned("watch");
-    const watchColor = watch ? ({ "watch-digital": "#333", "watch-classic": "#cfd5dc", "watch-diver": "#173a73", "watch-gold": "#e2be55", "watch-diamond": "#f4f6fa", "watch-grand": "#d4af37" })[watch.id] : null;
+    const watchColor = watch ? WATCH_COLORS[watch.id] : null;
     const rich = totalWorth() >= 20_000_000_000 || (watch && watch.price >= 80_000_000);
     const byTile = {};
     for (const [id, k] of Object.entries(state.place)) byTile[k] = id;
@@ -934,7 +948,7 @@
     }
     const item = ITEM_BY_ID[selectedItem];
     if (here === selectedItem) { selectedItem = null; renderWorld(); return; }
-    if (terrain(i, j) !== needs(item)) { toast(needs(item) === "water" ? "요트는 강 위에만 둘 수 있어요" : "땅(초록색 칸)에만 둘 수 있어요"); return; }
+    if (terrain(i, j) !== needs(item)) { toast(needs(item) === "water" ? "배는 강 위에만 둘 수 있어요" : "땅(초록색 칸)에만 둘 수 있어요"); return; }
     if (here) state.place[here] = state.place[selectedItem]; // swap
     state.place[selectedItem] = k;
     selectedItem = null; save(); renderWorld();
@@ -1043,8 +1057,8 @@
   let car3d = null;
   import("./models3d.js").then(m => { car3d = m; if ($("view-shop").classList.contains("on")) renderShop(); }).catch(() => {});
   function shopArt(item, night) {
-    if (car3d && item.cat === "car") {
-      try { const src = car3d.carThumb(item.id); if (src) return `<img src="${src}" alt="">`; } catch (e) { car3d = null; }
+    if (car3d) {
+      try { const src = car3d.itemThumb(item.id); if (src) return `<img src="${src}" alt="">`; } catch (e) { car3d = null; }
     }
     return itemSVG(item, night);
   }
@@ -1105,7 +1119,7 @@
   addEventListener("resize", () => town && $("view-world").classList.contains("on") && town.resize());
 
   // ---------- 3D avatar (avatar3d.js) ----------
-  const WATCH_COLORS = { "watch-digital": "#333", "watch-classic": "#cfd5dc", "watch-diver": "#173a73", "watch-gold": "#e2be55", "watch-diamond": "#f4f6fa", "watch-grand": "#d4af37" };
+  const WATCH_COLORS = { "watch-digital": "#333", "watch-classic": "#cfd5dc", "watch-diver": "#173a73", "watch-gold": "#e2be55", "watch-chrono": "#e8b4a0", "watch-diamond": "#f4f6fa", "watch-skeleton": "#d4af37", "watch-grand": "#d4af37" };
   let av3d = null, avView = null, avPart = "hair";
   import("./avatar3d.js").then(m => { av3d = m; if ($("view-me").classList.contains("on")) renderMe(); })
     .catch(() => { $("avStage").textContent = "3D를 불러오지 못했어요. 인터넷 연결을 확인해 주세요."; });
@@ -1175,7 +1189,7 @@
   function celebrate(item) {
     $("cArt").innerHTML = itemSVG(item);
     stopSpin();
-    if (car3d && item.cat === "car") try { stopSpin = car3d.carSpin($("cArt"), item.id); } catch (e) { /* keep SVG */ }
+    if (car3d) try { stopSpin = car3d.itemSpin($("cArt"), item.id); } catch (e) { /* keep SVG */ }
     $("cTitle").textContent = item.name + " 구매 완료!";
     $("cText").textContent = won(item.price) + (placeable(item) ? " · 내 동네에 바로 나타나요" : " · 내 캐릭터가 차고 있어요");
     $("celebrate").classList.add("on");
