@@ -639,9 +639,13 @@
     return `${d.getUTCMonth() + 1}/${d.getUTCDate()} 종가`;
   }
 
+  let polling = false;
   async function poll() {
+    // One request at a time (a slow phone network used to stack them up), none while the app is hidden.
+    if (polling || document.hidden) return;
+    polling = true;
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 4000);
+    const timer = setTimeout(() => ctrl.abort(), 8000);
     try {
       // Only listed markets: one delisted code would make Upbit reject the whole request.
       const res = await fetch("https://api.upbit.com/v1/ticker?markets=" + COINS.map(c => c.market).join(","), { signal: ctrl.signal });
@@ -654,7 +658,9 @@
       if (!sortedWithVolume) { sortedWithVolume = true; listDirty = true; }
     } catch (e) {
       if (++fails >= 3) live = false;
-    } finally { clearTimeout(timer); }
+      // Still on the built-in list (market list failed to load): retry it, a delisted code there fails every request.
+      if (COINS === FALLBACK_COINS) await loadMarkets();
+    } finally { clearTimeout(timer); polling = false; }
     renderLive();
   }
 
@@ -1252,6 +1258,7 @@
     renderHeader();
     renderCoins();
     if (sheetMarket) renderSheet();
+    if ($("view-wallet").classList.contains("on")) renderWalletCoins();
   }
 
   function renderCoins() {
@@ -1391,6 +1398,15 @@
     }).join("");
   }
 
+  // Coin rows only: re-drawn on every price tick while the wallet is open.
+  function renderWalletCoins() {
+    const coins = Object.entries(state.coins);
+    $("walletCoins").innerHTML = coins.length ? coins.map(([m, h]) => {
+      const p = prices[m]?.price, val = p ? h.qty * p : h.cost, r = val / h.cost - 1;
+      return `<div class="row"><div class="l">${esc(coinName(m))}<br><small>${fmtQty(h.qty)} ${unit(m)}</small></div>
+        <div class="r">${won(val)}<small class="${cls(r)}">${p ? fmtPct(r) : "시세 대기"} (${r >= 0 ? "+" : "-"}${wonShort(Math.abs(val - h.cost))}원)</small></div></div>`;
+    }).join("") : `<div class="empty">아직 코인이 없어요. 코인 탭에서 사보세요.</div>`;
+  }
   function renderWallet() {
     const orders = state.orders || [];
     $("ordersH").hidden = $("walletOrders").hidden = !orders.length;
@@ -1399,12 +1415,7 @@
       return `<div class="ord"><div>${esc(o.name)} ${o.side === "buy" ? `<b class="up">매수</b> ${wonShort(o.krw)}원` : `<b class="down">매도</b> ${fmtQty(Number(o.qty))}주`}
         <small>${+d[1]}/${+d[2]} 종가로 체결 예정</small></div><button data-cancel="${o.id}">취소</button></div>`;
     }).join("");
-    const coins = Object.entries(state.coins);
-    $("walletCoins").innerHTML = coins.length ? coins.map(([m, h]) => {
-      const p = prices[m]?.price, val = p ? h.qty * p : h.cost, r = val / h.cost - 1;
-      return `<div class="row"><div class="l">${esc(coinName(m))}<br><small>${fmtQty(h.qty)} ${unit(m)}</small></div>
-        <div class="r">${won(val)}<small class="${cls(r)}">${p ? fmtPct(r) : "시세 대기"} (${r >= 0 ? "+" : "-"}${wonShort(Math.abs(val - h.cost))}원)</small></div></div>`;
-    }).join("") : `<div class="empty">아직 코인이 없어요. 코인 탭에서 사보세요.</div>`;
+    renderWalletCoins();
     const items = state.items.map(id => ITEM_BY_ID[id]).filter(Boolean).sort((a, b) => b.price - a.price);
     $("walletItems").innerHTML = items.length ? items.map(i => `<div class="row"><div class="l">${esc(i.name)}</div>
       <div class="r">${won(i.price)}<small class="flat">되팔면 ${wonShort(Math.floor(i.price * RESALE))}원</small></div></div>`).join("")
@@ -1994,6 +2005,7 @@
   loadMarkets().then(poll);
   loadStocks();
   setInterval(poll, POLL_MS);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });   // fresh prices right after coming back to the app
   setInterval(() => { if ($("view-world").classList.contains("on")) renderWorld(); }, 60_000);
 })();
 </script>
