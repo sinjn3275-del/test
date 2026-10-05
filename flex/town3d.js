@@ -176,7 +176,8 @@ export function townViewer(el, { onTap } = {}) {
     return s;
   };
   // banner: 현수막 text over the back of the island; bubble: 말풍선 over the avatar.
-  function update({ place = {}, selected = null, targets = [], avatar = {}, watch = null, showTent = false, banner = null, bubble = null, floor = {}, decor = [], land = 7, sizes = {} } = {}) {
+  function update({ place = {}, selected = null, targets = [], avatar = {}, watch = null, showTent = false, banner = null, bubble = null, floor = {}, decor = [], land = 7, sizes = {}, still = false } = {}) {
+    stillPets = still;
     if (land !== size) buildGround(land);
     for (const m of tiles) if (terrain(...m.userData.key.split(",").map(Number)) === "land") m.material = floorMat(floor[m.userData.key] || "dirt");
     scene.remove(dyn);
@@ -291,7 +292,7 @@ export function townViewer(el, { onTap } = {}) {
     ray.setFromCamera(ndc, camera);
     // The avatar and bought items win over the ground.
     const hit = ray.intersectObjects(me ? [me, ...items] : items, true)[0] || ray.intersectObjects(tiles, false)[0];
-    if (hit && onTap) onTap(hit.object.userData.key);
+    if (hit && onTap) onTap(hit.object.userData.key, e.pointerType);
   });
 
   // Hover preview (PC): a see-through copy of what's about to be placed follows the mouse,
@@ -328,6 +329,16 @@ export function townViewer(el, { onTap } = {}) {
     ghostMark.material.color.set(bad ? 0xff4d4f : 0x52c41a);
     if (ghostFlat) { ghostMark.visible = bad; ghost.visible = !bad; ghost.position.y = 0.11; }
   });
+  // Touch has no hover: show the preview on one tile (null hides it).
+  function ghostAt(key) {
+    if (!ghost) return;
+    ghost.visible = ghostMark.visible = !!key;
+    if (!key) return;
+    const [i, j] = key.split(",").map(Number);
+    ghost.position.set(tileX(i), ghostFlat ? 0.11 : 0.1, tileZ(j));
+    ghostMark.position.set(tileX(i), 0.12, tileZ(j));
+    ghostMark.material.color.set(ghostCheck && !ghostCheck(key) ? 0xff4d4f : 0x52c41a);
+  }
   renderer.domElement.addEventListener("pointerleave", () => { if (ghost) ghost.visible = ghostMark.visible = false; });
 
   function resize() {
@@ -342,6 +353,7 @@ export function townViewer(el, { onTap } = {}) {
   const clock = new THREE.Clock();
   let raf = 0;
   let lastT = 0;
+  let stillPets = false;   // while editing, animals stand on their own tile so taps hit what you see
   // Walk an animal toward a random spot in its area, rest a little, repeat.
   function roam(g, dt) {
     const r = g.userData.roam;
@@ -360,7 +372,7 @@ export function townViewer(el, { onTap } = {}) {
     const t = clock.getElapsedTime(), dt = Math.min(0.1, t - lastT);
     lastT = t;
     for (const g of animated) {
-      if (g.userData.roam && g !== selGroup) roam(g, dt);
+      if (g.userData.roam && g !== selGroup && !stillPets) roam(g, dt);
       if (g.userData.tick) g.userData.tick(t);
       if (g.userData.spin) g.userData.spin.rotation.y = t * 12;
       if (g.userData.bob) { g.position.y = Math.sin(t * 1.5) * 0.03; g.rotation.z = Math.sin(t * 1.1) * 0.04; }
@@ -380,7 +392,7 @@ export function townViewer(el, { onTap } = {}) {
     raf = requestAnimationFrame(loop);
   };
   return {
-    update, setNight, resize, setGhost,
+    update, setNight, resize, setGhost, ghostAt,
     get night() { return night; },
     start() { if (!raf) { resize(); raf = requestAnimationFrame(loop); } },
     stop() { cancelAnimationFrame(raf); raf = 0; },

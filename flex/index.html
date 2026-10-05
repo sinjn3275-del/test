@@ -9,8 +9,8 @@
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
-  "./town3d.js": "./town3d.js?v=12", "./decor3d.js": "./decor3d.js?v=12", "./models3d.js": "./models3d.js?v=12",
-  "./avatar3d.js": "./avatar3d.js?v=12", "./street3d.js": "./street3d.js?v=12" } }
+  "./town3d.js": "./town3d.js?v=13", "./decor3d.js": "./decor3d.js?v=13", "./models3d.js": "./models3d.js?v=13",
+  "./avatar3d.js": "./avatar3d.js?v=13", "./street3d.js": "./street3d.js?v=13" } }
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
@@ -1040,8 +1040,8 @@
   }
   const decorAt = (k, list = state.decor) => list.find(d => d.at === k);
   const itemAt = k => Object.keys(state.place).find(id => cellsOf(state.place[id], id).includes(k));
-  function tapTile(k) {
-    if (edit) { editTile(k === ME ? avatarPos() : k); return; }
+  function tapTile(k, pointer) {
+    if (edit) { editTile(k === ME ? avatarPos() : k, pointer); return; }
     if (k === ME) { selectedItem = selectedItem === ME ? null : ME; renderWorld(); return; }
     const [i, j] = parseKey(k), here = itemAt(k), dHere = decorAt(k);
     if (!selectedItem) {
@@ -1102,7 +1102,10 @@
     const refund = remove.reduce((a, d) => a + Math.floor((decorItem(d.id)?.price || 0) * RESALE), 0);
     return { floor, add, remove, floorCost, addCost, refund, net: floorCost + addCost - refund };
   }
-  function editTile(k) {
+  // Touch: first tap on an empty tile previews the piece there, a second tap on it places it.
+  let previewAt = null;
+  function setPreview(k) { previewAt = k; town?.ghostAt?.(k); }
+  function editTile(k, pointer) {
     const [i, j] = parseKey(k);
     if (terrain(i, j) === "water") { toast(edit.tab === "floor" ? "강에는 바닥을 깔 수 없어요" : "땅 위에만 놓을 수 있어요"); return; }
     const undo = [];
@@ -1122,11 +1125,13 @@
         if (itemAt(k)) { toast("집·차가 있는 칸이에요"); return; }
         if (k === avatarPos()) { toast("캐릭터가 서 있는 칸이에요"); return; }
         if (!edit.pick) { toast("놓을 것을 먼저 골라주세요"); return; }
+        if (town && pointer && pointer !== "mouse" && previewAt !== k) { setPreview(k); toast("한 번 더 누르면 놓아요"); return; }
         const gone = decorAt(k);   // a saved piece taken away here: same pick puts it back
         const piece = gone && gone.id === edit.pick ? gone : { rid: "n" + ++newRid, id: edit.pick, at: k };
         edit.decor = [...list, piece]; undo.push(() => { edit.decor = list; });
       }
     }
+    setPreview(null);
     if (editDiff().net > state.cash) { undo.forEach(f => f()); toast(`현금이 부족해요 (보유 ${wonShort(state.cash)}원)`); return; }
     renderWorld();
   }
@@ -1173,7 +1178,7 @@
   function syncGhost() {
     const want = !edit ? null : edit.tab === "floor" ? "floor:" + edit.mat : edit.pick && decor3d ? edit.pick : null;
     if (want === ghostFor) return;
-    ghostFor = want;
+    ghostFor = want; previewAt = null;
     if (!want) { town.setGhost(null); return; }
     if (edit.tab === "floor") { if (townMod.floorTile) town.setGhost(townMod.floorTile(edit.mat), k => terrain(...parseKey(k)) === "land", { flat: true }); return; }
     town.setGhost(decor3d.decorModel(want, { avatar: state.avatar || {} }),
@@ -1309,7 +1314,7 @@
       town.setNight(h >= 19 || h < 6);
       town.update({ land: N, sizes: FOOT, place: state.place, selected: selectedItem, targets, avatar: state.avatar || {},
         watch: WATCH_COLORS[wornWatch()?.id] || null, showTent: !state.items.some(id => ITEM_BY_ID[id]?.cat === "house"),
-        banner: online ? daily?.banner : null, bubble: online ? daily?.bubble : null, floor: edit?.floor || state.floor, decor: edit?.decor || state.decor });
+        banner: online ? daily?.banner : null, bubble: online ? daily?.bubble : null, floor: edit?.floor || state.floor, decor: edit?.decor || state.decor, still: !!edit });
       town.start();
       syncGhost();
     } else $("scene").innerHTML = isoSceneSVG();
